@@ -1,25 +1,34 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
+  CheckSquare,
   ChevronRight,
+  Copy,
   Download,
+  Eye,
   File,
   FileArchive,
   FileImage,
   FileText,
   FileVideo,
   Folder,
+  Grid2X2,
   Home,
+  List,
   Loader2,
   LogOut,
+  MoreVertical,
   Search,
+  Square,
+  X,
 } from "lucide-react";
 
 type DriveItemType = "folder" | "image" | "video" | "pdf" | "text" | "archive" | "file";
 type PreviewStatus = "native" | "ready" | "missing" | "unsupported";
+type ViewMode = "list" | "grid";
 
 type DriveItem = {
   name: string;
@@ -34,9 +43,17 @@ type DriveItem = {
   previewUrl: string | null;
   thumbnailUrl: string | null;
   originalUrl: string;
+  directDownloadUrl: string | null;
+  downloadMode: "direct" | "app";
+  isLargeFile: boolean;
 };
 
 type AuthState = "checking" | "guest" | "authed";
+type SelectionNotice = {
+  tone: "info" | "warning";
+  message: string;
+  links?: DriveItem[];
+};
 
 const TEXT_PREVIEW_LIMIT = 256 * 1024;
 
@@ -69,6 +86,16 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function formatBytes(bytes: number) {
+  if (bytes === 0) return "0 B";
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / Math.pow(1024, index);
+
+  return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
 function previewStatusLabel(item: DriveItem) {
   if (item.type === "folder") return "Folder";
   if (item.type === "video" && item.previewStatus === "ready") return "Cached Preview";
@@ -98,6 +125,10 @@ function videoPreviewBadge(item: DriveItem) {
   };
 }
 
+function downloadModeLabel(item: DriveItem) {
+  return item.downloadMode === "direct" ? "Direct download" : "App download";
+}
+
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-b border-white/10 py-3 last:border-0">
@@ -116,18 +147,27 @@ export default function HomePage() {
   const [items, setItems] = useState<DriveItem[]>([]);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<DriveItem | null>(null);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [previewText, setPreviewText] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [previewTruncated, setPreviewTruncated] = useState(false);
+  const [notice, setNotice] = useState<SelectionNotice | null>(null);
+  const [copyMessage, setCopyMessage] = useState("");
 
   function clearPreviewState() {
     setPreviewText("");
     setPreviewError("");
     setPreviewLoading(false);
     setPreviewTruncated(false);
+  }
+
+  function clearSelection() {
+    setSelectedPaths(new Set());
+    setNotice(null);
   }
 
   function preparePreviewState(item: DriveItem) {
@@ -243,6 +283,7 @@ export default function HomePage() {
     setPassword("");
     setSelected(null);
     clearPreviewState();
+    clearSelection();
     setQuery("");
     await loadDrive("");
   }
@@ -254,15 +295,21 @@ export default function HomePage() {
     setItems([]);
     setSelected(null);
     clearPreviewState();
+    clearSelection();
     setQuery("");
   }
 
-  function openItem(item: DriveItem) {
+  function openFolder(item: DriveItem) {
+    setSelected(null);
+    clearPreviewState();
+    clearSelection();
+    setQuery("");
+    void loadDrive(item.path);
+  }
+
+  function previewItem(item: DriveItem) {
     if (item.type === "folder") {
-      setSelected(null);
-      clearPreviewState();
-      setQuery("");
-      void loadDrive(item.path);
+      openFolder(item);
       return;
     }
 
@@ -276,18 +323,96 @@ export default function HomePage() {
 
     setSelected(null);
     clearPreviewState();
+    clearSelection();
     setQuery("");
     void loadDrive(targetPath);
   }
 
+  function toggleSelect(path: string) {
+    setNotice(null);
+    setSelectedPaths((current) => {
+      const next = new Set(current);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  }
+
+  function selectAllDisplayed() {
+    setNotice(null);
+    setSelectedPaths(new Set(filtered.map((item) => item.path)));
+  }
+
+  async function copyLink(item: DriveItem) {
+    if (!item.directDownloadUrl) {
+      setCopyMessage("Folder tidak punya direct original link.");
+      return;
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(item.directDownloadUrl);
+      } else {
+        throw new Error("Clipboard API unavailable");
+      }
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = item.directDownloadUrl;
+      textarea.setAttribute("readonly", "true");
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+
+    setCopyMessage("Direct link copied.");
+    window.setTimeout(() => setCopyMessage(""), 1800);
+  }
+
+  function downloadSelected() {
+    const selectedItems = items.filter((item) => selectedPaths.has(item.path));
+    const selectedFiles = selectedItems.filter((item) => item.type !== "folder" && item.directDownloadUrl);
+    const hasFolder = selectedItems.some((item) => item.type === "folder");
+
+    if (hasFolder) {
+      setNotice({
+        tone: "warning",
+        message:
+          "Folder download as ZIP can be slow for huge folders. Open folder and download files directly.",
+        links: selectedFiles,
+      });
+      return;
+    }
+
+    selectedFiles.forEach((item) => {
+      if (item.directDownloadUrl) {
+        window.open(item.directDownloadUrl, "_blank", "noopener,noreferrer");
+      }
+    });
+
+    setNotice({
+      tone: "info",
+      message: "Opening selected file downloads. If your browser blocks popups, use these links.",
+      links: selectedFiles,
+    });
+  }
+
   const breadcrumbs = currentPath.split("/").filter(Boolean);
 
-  const filtered = useMemo(() => {
-    const needle = query.toLowerCase().trim();
-    if (!needle) return items;
-    return items.filter((item) => item.name.toLowerCase().includes(needle));
-  }, [items, query]);
+  const needle = query.toLowerCase().trim();
+  const filtered = needle
+    ? items.filter((item) => item.name.toLowerCase().includes(needle))
+    : items;
+  const selectedItems = items.filter((item) => selectedPaths.has(item.path));
 
+  const selectedCount = selectedPaths.size;
+  const displayedBytes = filtered.reduce((total, item) => total + (item.type === "folder" ? 0 : item.bytes), 0);
+  const allDisplayedSelected = filtered.length > 0 && filtered.every((item) => selectedPaths.has(item.path));
   const selectedVideoPreviewUrl =
     selected?.type === "video" && selected.previewStatus === "ready"
       ? selected.previewUrl
@@ -407,7 +532,7 @@ export default function HomePage() {
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-7xl gap-4 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="mx-auto grid max-w-7xl gap-4 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_390px]">
         <section className="min-w-0">
           <nav className="mb-4 flex min-h-12 flex-wrap items-center gap-1 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm">
             <button
@@ -434,13 +559,121 @@ export default function HomePage() {
             ))}
           </nav>
 
-          <div className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.03]">
-            <div className="hidden grid-cols-[minmax(0,1fr)_130px_120px] border-b border-white/10 px-4 py-3 text-xs font-medium text-zinc-500 md:grid">
-              <span>Name</span>
-              <span>Modified</span>
-              <span className="text-right">Size</span>
+          <div className="mb-4 grid gap-3 rounded-lg border border-white/10 bg-white/[0.035] p-3 md:grid-cols-[1fr_auto] md:items-center">
+            <div className="grid gap-2 text-sm text-zinc-400 sm:grid-cols-3">
+              <span>
+                <b className="text-white">{filtered.length}</b> items
+              </span>
+              <span>
+                <b className="text-white">{formatBytes(displayedBytes)}</b> displayed
+              </span>
+              <span>
+                <b className="text-white">{selectedCount}</b> selected
+              </span>
             </div>
 
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={selectAllDisplayed}
+                disabled={filtered.length === 0 || allDisplayedSelected}
+                className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <CheckSquare className="h-4 w-4" />
+                Select all
+              </button>
+              <button
+                type="button"
+                onClick={clearSelection}
+                disabled={selectedCount === 0}
+                className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <X className="h-4 w-4" />
+                Clear
+              </button>
+              <div className="inline-flex rounded-lg border border-white/10 bg-black/20 p-1">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("list")}
+                  title="List View"
+                  className={`rounded-md p-2 ${viewMode === "list" ? "bg-[#d7ff3f] text-black" : "text-zinc-400 hover:text-white"}`}
+                >
+                  <List className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("grid")}
+                  title="Grid View"
+                  className={`rounded-md p-2 ${viewMode === "grid" ? "bg-[#d7ff3f] text-black" : "text-zinc-400 hover:text-white"}`}
+                >
+                  <Grid2X2 className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {selectedCount > 0 ? (
+            <div className="mb-4 rounded-lg border border-[#d7ff3f]/20 bg-[#d7ff3f]/10 p-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm font-medium text-[#d7ff3f]">
+                  {selectedCount} selected
+                  {selectedItems.some((item) => item.type === "folder")
+                    ? " - folder selected"
+                    : ""}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={downloadSelected}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#d7ff3f] px-3 py-2 text-sm font-semibold text-black transition hover:bg-[#c7f02f]"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download selected
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 transition hover:bg-white/10"
+                  >
+                    <X className="h-4 w-4" />
+                    Clear selection
+                  </button>
+                </div>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-zinc-400">
+                Folder download as ZIP can be slow for huge folders. Open folder and download files directly.
+              </p>
+            </div>
+          ) : null}
+
+          {notice ? (
+            <div
+              className={`mb-4 rounded-lg border p-3 text-sm ${
+                notice.tone === "warning"
+                  ? "border-amber-300/20 bg-amber-300/10 text-amber-100"
+                  : "border-white/10 bg-white/[0.04] text-zinc-300"
+              }`}
+            >
+              <p>{notice.message}</p>
+              {notice.links?.length ? (
+                <div className="mt-2 space-y-1">
+                  {notice.links.map((item) => (
+                    <a
+                      key={item.path}
+                      href={item.directDownloadUrl || "#"}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block truncate text-[#d7ff3f] underline-offset-4 hover:underline"
+                    >
+                      {item.name}
+                    </a>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.03]">
             {loading ? (
               <div className="flex h-80 items-center justify-center gap-3 text-sm text-zinc-400">
                 <Loader2 className="h-5 w-5 animate-spin text-[#d7ff3f]" />
@@ -459,71 +692,170 @@ export default function HomePage() {
                 </button>
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex h-80 flex-col items-center justify-center gap-2 px-5 text-center">
-                <Folder className="h-9 w-9 text-zinc-600" />
-                <p className="text-sm font-medium text-zinc-300">
-                  {query ? `No result for "${query}".` : "Folder kosong."}
-                </p>
+              <div className="flex h-80 flex-col items-center justify-center gap-3 px-5 text-center">
+                <Folder className="h-10 w-10 text-zinc-600" />
+                <div>
+                  <p className="text-sm font-medium text-zinc-200">
+                    {query ? `No result for "${query}".` : "Folder kosong."}
+                  </p>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Browse another folder or clear the current search.
+                  </p>
+                </div>
               </div>
-            ) : (
-              <div className="divide-y divide-white/10">
-                {filtered.map((item) => {
-                  const Icon = iconFor(item.type);
-                  const isSelected = selected?.path === item.path;
+            ) : viewMode === "list" ? (
+              <div>
+                <div className="hidden grid-cols-[44px_minmax(0,1fr)_130px_120px_150px] border-b border-white/10 px-4 py-3 text-xs font-medium text-zinc-500 md:grid">
+                  <span />
+                  <span>Name</span>
+                  <span>Modified</span>
+                  <span className="text-right">Size</span>
+                  <span className="text-right">Actions</span>
+                </div>
+                <div className="divide-y divide-white/10">
+                  {filtered.map((item) => {
+                    const Icon = iconFor(item.type);
+                    const isPreviewed = selected?.path === item.path;
+                    const isChecked = selectedPaths.has(item.path);
 
-                  return (
-                    <div
-                      key={item.path}
-                      className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 transition ${
-                        isSelected ? "bg-[#d7ff3f]/10" : "hover:bg-white/[0.045]"
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => openItem(item)}
-                        className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-3 rounded-lg py-1 text-left"
+                    return (
+                      <div
+                        key={item.path}
+                        className={`grid grid-cols-[36px_minmax(0,1fr)] gap-2 px-3 py-2 transition md:grid-cols-[44px_minmax(0,1fr)_130px_120px_150px] md:items-center ${
+                          isPreviewed ? "bg-[#d7ff3f]/10" : "hover:bg-white/[0.045]"
+                        }`}
                       >
-                        <span
-                          className={`flex h-10 w-10 items-center justify-center rounded-lg border ${
-                            item.type === "folder"
-                              ? "border-[#d7ff3f]/20 bg-[#d7ff3f]/10 text-[#d7ff3f]"
-                              : "border-white/10 bg-black/20 text-zinc-400"
-                          }`}
+                        <button
+                          type="button"
+                          onClick={() => toggleSelect(item.path)}
+                          title={isChecked ? "Unselect" : "Select"}
+                          className="flex h-10 w-9 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-white/10 hover:text-white"
                         >
-                          <Icon className="h-5 w-5" />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium text-white">
-                            {item.name}
-                          </span>
-                          <span className="mt-1 block truncate text-xs text-zinc-500 md:hidden">
-                            {typeLabel(item)} · {formatDate(item.modified)}
-                          </span>
-                          <span className="mt-1 hidden truncate text-xs text-zinc-500 md:block">
-                            {typeLabel(item)} · {previewStatusLabel(item)}
-                          </span>
-                        </span>
-                      </button>
+                          {isChecked ? <CheckSquare className="h-5 w-5 text-[#d7ff3f]" /> : <Square className="h-5 w-5" />}
+                        </button>
 
-                      <div className="grid shrink-0 grid-cols-[auto_auto] items-center gap-2 md:grid-cols-[130px_92px_36px]">
+                        <button
+                          type="button"
+                          onClick={() => (item.type === "folder" ? openFolder(item) : previewItem(item))}
+                          className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-3 rounded-lg py-1 text-left"
+                        >
+                          <span
+                            className={`flex h-10 w-10 items-center justify-center rounded-lg border ${
+                              item.type === "folder"
+                                ? "border-[#d7ff3f]/20 bg-[#d7ff3f]/10 text-[#d7ff3f]"
+                                : "border-white/10 bg-black/20 text-zinc-400"
+                            }`}
+                          >
+                            <Icon className="h-5 w-5" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium text-white">
+                              {item.name}
+                            </span>
+                            <span className="mt-1 block truncate text-xs text-zinc-500">
+                              {typeLabel(item)} - {previewStatusLabel(item)} - {item.type === "folder" ? "Open folder" : downloadModeLabel(item)}
+                            </span>
+                          </span>
+                        </button>
+
                         <span className="hidden text-sm text-zinc-500 md:block">
                           {formatDate(item.modified)}
                         </span>
                         <span className="hidden text-right text-sm text-zinc-500 md:block">
                           {item.size || "-"}
                         </span>
+
+                        <div className="col-span-2 flex flex-wrap justify-end gap-2 md:col-span-1">
+                          {item.type === "folder" ? (
+                            <button
+                              type="button"
+                              onClick={() => openFolder(item)}
+                              className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-zinc-300 transition hover:bg-white/10 hover:text-white"
+                            >
+                              Open
+                              <ChevronRight className="h-4 w-4" />
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => previewItem(item)}
+                                className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-zinc-300 transition hover:bg-white/10 hover:text-white"
+                              >
+                                <Eye className="h-4 w-4" />
+                                Preview
+                              </button>
+                              <ItemActionMenu item={item} onPreview={previewItem} onCopy={copyLink} />
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3">
+                {filtered.map((item) => {
+                  const Icon = iconFor(item.type);
+                  const isChecked = selectedPaths.has(item.path);
+                  const isPreviewed = selected?.path === item.path;
+
+                  return (
+                    <div
+                      key={item.path}
+                      className={`rounded-lg border p-3 transition ${
+                        isPreviewed
+                          ? "border-[#d7ff3f]/40 bg-[#d7ff3f]/10"
+                          : "border-white/10 bg-black/20 hover:border-white/20"
+                      }`}
+                    >
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleSelect(item.path)}
+                          title={isChecked ? "Unselect" : "Select"}
+                          className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-white/10 hover:text-white"
+                        >
+                          {isChecked ? <CheckSquare className="h-5 w-5 text-[#d7ff3f]" /> : <Square className="h-5 w-5" />}
+                        </button>
                         {item.type === "folder" ? (
-                          <ChevronRight className="h-4 w-4 text-zinc-600" />
-                        ) : (
-                          <a
-                            href={fileUrl(item.path, true)}
-                            title={`Download ${item.name}`}
-                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-zinc-300 transition hover:bg-[#d7ff3f] hover:text-black"
+                          <button
+                            type="button"
+                            onClick={() => openFolder(item)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1.5 text-xs text-zinc-300 transition hover:bg-white/10 hover:text-white"
                           >
-                            <Download className="h-4 w-4" />
-                          </a>
+                            Open
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        ) : (
+                          <ItemActionMenu item={item} onPreview={previewItem} onCopy={copyLink} />
                         )}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => (item.type === "folder" ? openFolder(item) : previewItem(item))}
+                        className="flex w-full flex-col items-start text-left"
+                      >
+                        <span
+                          className={`mb-3 flex h-12 w-12 items-center justify-center rounded-lg border ${
+                            item.type === "folder"
+                              ? "border-[#d7ff3f]/20 bg-[#d7ff3f]/10 text-[#d7ff3f]"
+                              : "border-white/10 bg-black/20 text-zinc-400"
+                          }`}
+                        >
+                          <Icon className="h-6 w-6" />
+                        </span>
+                        <span className="line-clamp-2 min-h-10 text-sm font-medium text-white">
+                          {item.name}
+                        </span>
+                        <span className="mt-2 text-xs text-zinc-500">
+                          {typeLabel(item)} - {item.size || "Folder"}
+                        </span>
+                        <span className="mt-1 text-xs text-zinc-500">
+                          {item.type === "folder" ? "Open folder" : downloadModeLabel(item)}
+                        </span>
+                      </button>
                     </div>
                   );
                 })}
@@ -537,6 +869,7 @@ export default function HomePage() {
             <div className="flex min-h-72 flex-col items-center justify-center gap-3 text-center">
               <File className="h-9 w-9 text-zinc-600" />
               <p className="text-sm text-zinc-400">Pilih file untuk melihat detail.</p>
+              {copyMessage ? <p className="text-xs text-[#d7ff3f]">{copyMessage}</p> : null}
             </div>
           ) : (
             <div className="space-y-4">
@@ -544,6 +877,7 @@ export default function HomePage() {
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-[#d7ff3f]">DETAIL</p>
                   <h2 className="mt-2 break-words text-xl font-semibold text-white">{selected.name}</h2>
+                  <p className="mt-2 text-xs text-zinc-500">{downloadModeLabel(selected)}</p>
                 </div>
                 {(() => {
                   const Icon = iconFor(selected.type);
@@ -582,10 +916,10 @@ export default function HomePage() {
                       <FileVideo className="h-11 w-11 text-zinc-500" />
                       <div>
                         <p className="text-sm font-medium text-white">
-                          Preview cache not generated yet
+                          Preview cache not generated yet.
                         </p>
                         <p className="mt-1 text-xs text-zinc-500">
-                          {typeLabel(selected)} · {selected.size || "Unknown size"}
+                          Original file can still be downloaded.
                         </p>
                       </div>
                     </div>
@@ -629,19 +963,29 @@ export default function HomePage() {
                     <div>
                       <p className="text-sm font-medium text-white">Preview unavailable</p>
                       <p className="mt-1 text-xs text-zinc-500">
-                        {typeLabel(selected)} · {selected.size || "Unknown size"}
+                        {typeLabel(selected)} - {selected.size || "Unknown size"}
                       </p>
                     </div>
-                    <a
-                      href={fileUrl(selected.path, true)}
-                      className="inline-flex items-center gap-2 rounded-lg bg-[#d7ff3f] px-3 py-2 text-sm font-semibold text-black transition hover:bg-[#c7f02f]"
-                    >
-                      <Download className="h-4 w-4" />
-                      Download
-                    </a>
+                    {selected.directDownloadUrl ? (
+                      <a
+                        href={selected.directDownloadUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 rounded-lg bg-[#d7ff3f] px-3 py-2 text-sm font-semibold text-black transition hover:bg-[#c7f02f]"
+                      >
+                        <Download className="h-4 w-4" />
+                        Download
+                      </a>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
+
+              {selected.isLargeFile ? (
+                <p className="rounded-lg border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs leading-5 text-amber-100">
+                  Large file. Download will use direct server route for better speed.
+                </p>
+              ) : null}
 
               {selected.type === "video" ? (
                 <div className="space-y-2">
@@ -674,19 +1018,84 @@ export default function HomePage() {
                 <DetailRow label="Ukuran" value={selected.size || "-"} />
                 <DetailRow label="Modified" value={formatDate(selected.modified)} />
                 <DetailRow label="Preview status" value={previewStatusLabel(selected)} />
+                <DetailRow label="Download mode" value={downloadModeLabel(selected)} />
               </div>
 
-              <a
-                href={fileUrl(selected.path, true)}
-                className="flex items-center justify-center gap-2 rounded-lg bg-[#d7ff3f] px-4 py-3 font-semibold text-black transition hover:bg-[#c7f02f]"
-              >
-                <Download className="h-4 w-4" />
-                Download Original
-              </a>
+              <div className="grid gap-2">
+                {selected.directDownloadUrl ? (
+                  <a
+                    href={selected.directDownloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-center gap-2 rounded-lg bg-[#d7ff3f] px-4 py-3 font-semibold text-black transition hover:bg-[#c7f02f]"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download Original
+                  </a>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void copyLink(selected)}
+                  disabled={!selected.directDownloadUrl}
+                  className="flex items-center justify-center gap-2 rounded-lg border border-white/10 px-4 py-3 font-semibold text-zinc-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Copy className="h-4 w-4" />
+                  Copy Direct Link
+                </button>
+                {copyMessage ? <p className="text-center text-xs text-[#d7ff3f]">{copyMessage}</p> : null}
+              </div>
             </div>
           )}
         </aside>
       </div>
     </main>
+  );
+}
+
+function ItemActionMenu({
+  item,
+  onPreview,
+  onCopy,
+}: {
+  item: DriveItem;
+  onPreview: (item: DriveItem) => void;
+  onCopy: (item: DriveItem) => Promise<void>;
+}) {
+  return (
+    <details className="relative">
+      <summary className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-zinc-300 transition hover:bg-white/10 hover:text-white">
+        <MoreVertical className="h-4 w-4" />
+      </summary>
+      <div className="absolute right-0 z-30 mt-2 w-48 rounded-lg border border-white/10 bg-[#101217] p-1 shadow-2xl">
+        <button
+          type="button"
+          onClick={() => onPreview(item)}
+          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-zinc-200 hover:bg-white/10"
+        >
+          <Eye className="h-4 w-4" />
+          Preview
+        </button>
+        {item.directDownloadUrl ? (
+          <a
+            href={item.directDownloadUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"
+          >
+            <Download className="h-4 w-4" />
+            Download Original
+          </a>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => void onCopy(item)}
+          disabled={!item.directDownloadUrl}
+          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-zinc-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Copy className="h-4 w-4" />
+          Copy Link
+        </button>
+      </div>
+    </details>
   );
 }

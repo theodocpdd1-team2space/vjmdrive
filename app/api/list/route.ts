@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs/promises";
 import { isAuthed } from "@/lib/auth";
+import { createDownloadLink } from "@/lib/download-url";
 import { formatBytes, getDriveItemType, getExtension } from "@/lib/file-utils";
 import { getPreviewMetadata } from "@/lib/preview-cache";
 import {
@@ -13,6 +14,8 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const LARGE_FILE_BYTES = 500 * 1024 * 1024;
 
 export async function GET(req: NextRequest) {
   if (!(await isAuthed())) {
@@ -53,6 +56,7 @@ export async function GET(req: NextRequest) {
             stat,
             entry.isDirectory()
           );
+          const downloadLink = createDownloadLink(itemRelative, entry.isDirectory());
 
           return {
             name: entry.name,
@@ -62,10 +66,12 @@ export async function GET(req: NextRequest) {
             size: entry.isDirectory() ? null : formatBytes(stat.size),
             bytes: entry.isDirectory() ? 0 : stat.size,
             modified: stat.mtime.toISOString(),
+            isLargeFile: !entry.isDirectory() && stat.size > LARGE_FILE_BYTES,
             canPreview:
               previewMetadata.previewStatus === "native" ||
               previewMetadata.previewStatus === "ready",
             ...previewMetadata,
+            ...downloadLink,
           };
         })
     );

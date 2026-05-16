@@ -61,10 +61,6 @@ export function createOriginalUrl(relativePath: string) {
   return `/api/file?${new URLSearchParams({ path: relativePath }).toString()}`;
 }
 
-export function createDownloadUrl(relativePath: string) {
-  return `/api/file?${new URLSearchParams({ path: relativePath, download: "1" }).toString()}`;
-}
-
 export function createPreviewUrl(relativePath: string) {
   return `/api/preview?${new URLSearchParams({ path: relativePath }).toString()}`;
 }
