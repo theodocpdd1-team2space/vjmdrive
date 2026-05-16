@@ -1,0 +1,7 @@
+{
+  "project": "VJM Drive",
+  "owner": "VJMRTIM",
+  "environment": "local",
+  "assetRoot": "./public/sample-drive",
+  "readOnly": true
+}

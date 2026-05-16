@@ -1,0 +1,4 @@
+This is a tiny placeholder file with a .mov extension.
+
+It exists only to exercise VJM Drive's "Preview Missing" state during local development.
+Real production videos remain read-only and will get generated preview files in PREVIEW_ROOT.

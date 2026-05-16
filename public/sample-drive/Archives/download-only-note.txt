@@ -1,0 +1,3 @@
+Archive files such as zip, rar, and 7z are shown as download-only items in this MVP.
+
+The same fallback panel is used for any unsupported file type.

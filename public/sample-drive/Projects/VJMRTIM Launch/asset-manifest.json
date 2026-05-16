@@ -1,0 +1,13 @@
+{
+  "folder": "Projects/VJMRTIM Launch",
+  "items": [
+    {
+      "name": "campaign-notes.md",
+      "type": "text/markdown"
+    },
+    {
+      "name": "asset-manifest.json",
+      "type": "application/json"
+    }
+  ]
+}

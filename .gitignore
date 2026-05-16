@@ -16,6 +16,7 @@
 # next.js
 /.next/
 /out/
+.vjm-drive-cache/
 
 # production
 /build

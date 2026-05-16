@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# VJM Drive
 
-## Getting Started
+Private asset drive MVP untuk VJMRTIM. Saat ini berjalan lokal, read-only, tanpa database, dan memakai satu master password dari `.env.local`.
 
-First, run the development server:
+## Local Development
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Buka [http://localhost:3000](http://localhost:3000), lalu login dengan:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```txt
+admin123
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Local environment default:
 
-## Learn More
+```txt
+DRIVE_PASSWORD=admin123
+ASSET_ROOT=./public/sample-drive
+CACHE_ROOT=./.vjm-drive-cache
+PREVIEW_ROOT=./.vjm-drive-cache/previews
+THUMBNAIL_ROOT=./.vjm-drive-cache/thumbnails
+```
 
-To learn more about Next.js, take a look at the following resources:
+Generated preview and thumbnail files are not served from `public`; they stay private and are streamed through authenticated API routes.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Preview Cache
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Video files that browsers can usually play (`mp4`, `webm`, `m4v`) use native preview. Unsupported or inconsistent codecs such as MOV/DXV/HAP/ProRes can use generated preview cache files later.
 
-## Deploy on Vercel
+Production preview command target:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+ffmpeg -ss 00:00:05 -i input.mov -t 15 -vf "scale=1280:-2" -c:v libx264 -preset veryfast -crf 30 -pix_fmt yuv420p -an preview.mp4
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Production thumbnail command target:
+
+```bash
+ffmpeg -ss 00:00:05 -i input.mov -frames:v 1 -q:v 3 thumbnail.jpg
+```
+
+Local placeholder endpoint:
+
+```bash
+curl -b cookies.txt -H "Content-Type: application/json" \
+  -d '{"path":"Video Samples/unsupported-codec-placeholder.mov"}' \
+  http://localhost:3000/api/preview/mark-sample
+```
+
+If no sample MP4 exists in `ASSET_ROOT`, this creates a dummy job record only. The original asset is never modified.
+
+## Production Note
+
+Nanti di VPS `.env.local` diganti menjadi:
+
+```txt
+DRIVE_PASSWORD=<password asli>
+ASSET_ROOT=/mnt/hdd4tb/PublicShare
+CACHE_ROOT=/var/cache/vjm-drive
+PREVIEW_ROOT=/var/cache/vjm-drive/previews
+THUMBNAIL_ROOT=/var/cache/vjm-drive/thumbnails
+```
+
+Struktur API sudah dipisah agar ffmpeg preview generator bisa ditambahkan nanti tanpa mengubah UI utama.

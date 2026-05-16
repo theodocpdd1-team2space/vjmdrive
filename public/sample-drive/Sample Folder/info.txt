@@ -1,0 +1,3 @@
+Ini contoh folder.
+
+Klik file text/json/md/log untuk melihat preview di panel kanan.
