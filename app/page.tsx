@@ -889,6 +889,19 @@ export default function HomePage() {
                 })()}
               </div>
 
+              {selected.type === "video" && selected.thumbnailUrl ? (
+                <div className="overflow-hidden rounded-lg border border-white/10 bg-black/30">
+                  <Image
+                    src={selected.thumbnailUrl}
+                    alt={`${selected.name} thumbnail`}
+                    width={960}
+                    height={540}
+                    unoptimized
+                    className="max-h-52 w-full object-cover"
+                  />
+                </div>
+              ) : null}
+
               <div className="overflow-hidden rounded-lg border border-white/10 bg-black/30">
                 {selected.type === "image" ? (
                   <Image

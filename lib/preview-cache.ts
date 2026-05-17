@@ -2,7 +2,7 @@ import crypto from "crypto";
 import path from "path";
 import fs from "fs/promises";
 import type { Stats } from "fs";
-import { getExtension } from "@/lib/file-utils";
+import { getExtension } from "./file-utils";
 
 export type PreviewStatus = "native" | "ready" | "missing" | "unsupported";
 

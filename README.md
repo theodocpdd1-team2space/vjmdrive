@@ -31,6 +31,27 @@ Generated preview and thumbnail files are not served from `public`; they stay pr
 
 Video files that browsers can usually play (`mp4`, `webm`, `m4v`) use native preview. Unsupported or inconsistent codecs such as MOV/DXV/HAP/ProRes can use generated preview cache files later.
 
+Install ffmpeg on the server:
+
+```bash
+sudo apt update && sudo apt install -y ffmpeg
+```
+
+Run the preview scanner:
+
+```bash
+npm run preview:scan
+```
+
+The scanner recursively reads `ASSET_ROOT`, finds video files (`.mp4`, `.mov`, `.m4v`, `.webm`, `.avi`, `.mkv`), and writes:
+
+```txt
+PREVIEW_ROOT/<hash>.mp4
+THUMBNAIL_ROOT/<hash>.jpg
+```
+
+The hash is based on relative path, file size, and modified time. Existing preview and thumbnail files are skipped, and original files are never modified. Generation is not triggered by browsing; it only runs from the CLI scanner.
+
 Production preview command target:
 
 ```bash
@@ -52,6 +73,14 @@ curl -b cookies.txt -H "Content-Type: application/json" \
 ```
 
 If no sample MP4 exists in `ASSET_ROOT`, this creates a dummy job record only. The original asset is never modified.
+
+Failed preview jobs are written to:
+
+```txt
+CACHE_ROOT/logs/preview-failed.json
+```
+
+DXV/HAP files can be previewed only if the installed ffmpeg build can decode those codecs.
 
 ## Production Note
 
