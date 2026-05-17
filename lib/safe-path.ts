@@ -6,6 +6,8 @@ export const IGNORED_NAMES = new Set([
   "System Volume Information",
   "found.000",
   "found.001",
+  "__MACOSX",
+  ".DS_Store",
 ]);
 
 export type SafePath = {
@@ -18,7 +20,7 @@ export function getAssetRoot() {
   const configuredRoot = process.env.ASSET_ROOT;
 
   if (!configuredRoot || configuredRoot === "./public/sample-drive") {
-    return path.join(process.cwd(), "public", "sample-drive");
+    return path.join(/*turbopackIgnore: true*/ process.cwd(), "public", "sample-drive");
   }
 
   if (path.isAbsolute(configuredRoot)) {
@@ -82,4 +84,35 @@ export async function assertRealPathInsideRoot(root: string, target: string) {
   }
 
   return realTarget;
+}
+
+export function assertSafeName(name: string) {
+  const cleanName = name.trim();
+
+  if (
+    !cleanName ||
+    cleanName.includes("/") ||
+    cleanName.includes("\\") ||
+    cleanName.includes("\0") ||
+    cleanName === "." ||
+    cleanName === ".." ||
+    isIgnoredName(cleanName)
+  ) {
+    throw new Error("Invalid name");
+  }
+
+  return cleanName;
+}
+
+export function joinDrivePath(parentPath: string, childName: string) {
+  const safeParent = normalizeDrivePath(parentPath);
+  const safeName = assertSafeName(childName);
+  return path.posix.join(safeParent, safeName);
+}
+
+export function isDriveSubPath(parentPath: string, childPath: string) {
+  const parent = normalizeDrivePath(parentPath);
+  const child = normalizeDrivePath(childPath);
+
+  return parent === "" || child === parent || child.startsWith(`${parent}/`);
 }

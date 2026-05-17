@@ -26,3 +26,19 @@ body {
   background: #d7ff3f;
   color: #050608;
 }
+
+.menu-btn {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-size: 0.875rem;
+  color: #e4e4e7;
+}
+
+.menu-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}

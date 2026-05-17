@@ -19,7 +19,7 @@ export function getCacheRoot() {
   const configuredRoot = process.env.CACHE_ROOT;
 
   if (!configuredRoot || configuredRoot === "./.vjm-drive-cache") {
-    return path.join(process.cwd(), ".vjm-drive-cache");
+    return path.join(/*turbopackIgnore: true*/ process.cwd(), ".vjm-drive-cache");
   }
 
   if (path.isAbsolute(configuredRoot)) {
@@ -33,7 +33,7 @@ export function getPreviewRoot() {
   const configuredRoot = process.env.PREVIEW_ROOT;
 
   if (!configuredRoot || configuredRoot === "./.vjm-drive-cache/previews") {
-    return path.join(process.cwd(), ".vjm-drive-cache", "previews");
+    return path.join(/*turbopackIgnore: true*/ process.cwd(), ".vjm-drive-cache", "previews");
   }
 
   if (path.isAbsolute(configuredRoot)) {
@@ -47,7 +47,7 @@ export function getThumbnailRoot() {
   const configuredRoot = process.env.THUMBNAIL_ROOT;
 
   if (!configuredRoot || configuredRoot === "./.vjm-drive-cache/thumbnails") {
-    return path.join(process.cwd(), ".vjm-drive-cache", "thumbnails");
+    return path.join(/*turbopackIgnore: true*/ process.cwd(), ".vjm-drive-cache", "thumbnails");
   }
 
   if (path.isAbsolute(configuredRoot)) {

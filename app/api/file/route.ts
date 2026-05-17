@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stat } from "fs/promises";
 import path from "path";
-import { isAuthed } from "@/lib/auth";
+import { isAdmin } from "@/lib/auth";
 import { contentDisposition, getContentType } from "@/lib/file-utils";
 import { nodeStream, parseRange } from "@/lib/http-file";
 import { assertRealPathInsideRoot, resolveSafePath, type SafePath } from "@/lib/safe-path";
@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  if (!(await isAuthed())) {
+  if (!(await isAdmin())) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 

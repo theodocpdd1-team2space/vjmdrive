@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
-import { isAuthed } from "@/lib/auth";
+import { isAdmin } from "@/lib/auth";
 import { getDriveItemType } from "@/lib/file-utils";
 import {
   getCachePaths,
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!(await isAuthed())) {
+  if (!(await isAdmin())) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 

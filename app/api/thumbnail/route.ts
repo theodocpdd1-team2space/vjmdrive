@@ -1,7 +1,7 @@
 import { stat } from "fs/promises";
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
-import { isAuthed } from "@/lib/auth";
+import { isAdmin } from "@/lib/auth";
 import { contentDisposition, getContentType } from "@/lib/file-utils";
 import { nodeStream } from "@/lib/http-file";
 import { findThumbnailCachePath, getThumbnailRoot } from "@/lib/preview-cache";
@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  if (!(await isAuthed())) {
+  if (!(await isAdmin())) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 
