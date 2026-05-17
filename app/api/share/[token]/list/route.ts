@@ -19,7 +19,16 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/share/[token
       canDownload: share.canDownload,
     });
 
-    return NextResponse.json({ ok: true, share: { name: share.name, canDownload: share.canDownload }, ...data });
+    return NextResponse.json({
+      ok: true,
+      share: {
+        name: share.name,
+        canDownload: share.canDownload,
+        expiresAt: share.expiresAt,
+        note: share.note || "",
+      },
+      ...data,
+    });
   } catch (caught) {
     return NextResponse.json(
       { ok: false, message: caught instanceof Error ? caught.message : "Folder not found" },

@@ -51,7 +51,44 @@ export async function listDriveFolder(options: DriveListOptions) {
 
   const folderStat = await fs.stat(safePath.absolutePath);
   if (!folderStat.isDirectory()) {
-    throw new Error("Folder not found");
+    if (!scopeRootPath || requestedPath) {
+      throw new Error("Folder not found");
+    }
+
+    const previewMetadata = await getPreviewMetadata(safePath.relativePath, folderStat, false);
+    const queued = await readPreviewQueue().catch(() => []);
+    const queuedStatus = queued.find((item) => item.path === safePath.relativePath)?.status;
+    const previewStatus = queuedStatus && previewMetadata.previewStatus !== "ready"
+      ? queuedStatus
+      : previewMetadata.previewStatus;
+    const downloadLink = options.canDownload === false
+      ? { directDownloadUrl: null, downloadMode: "app" as const }
+      : {
+          directDownloadUrl: scopedApiUrl(options.urlPrefix || "", "file", "", true),
+          downloadMode: "app" as const,
+        };
+    const type = getDriveItemType(safePath.relativePath, false);
+    const item = {
+      name: path.basename(safePath.relativePath),
+      path: "",
+      type,
+      extension: getExtension(safePath.relativePath),
+      size: formatBytes(folderStat.size),
+      bytes: folderStat.size,
+      modified: folderStat.mtime.toISOString(),
+      isLargeFile: folderStat.size > LARGE_FILE_BYTES,
+      canPreview: previewStatus === "native" || previewStatus === "ready",
+      ...previewMetadata,
+      previewStatus,
+      originalUrl: scopedApiUrl(options.urlPrefix || "", "file", ""),
+      previewUrl: previewMetadata.previewUrl
+        ? scopedApiUrl(options.urlPrefix || "", previewMetadata.previewStatus === "ready" ? "preview" : "file", "")
+        : null,
+      thumbnailUrl: previewMetadata.thumbnailUrl ? scopedApiUrl(options.urlPrefix || "", "thumbnail", "") : null,
+      ...downloadLink,
+    };
+
+    return { path: "", items: [item] };
   }
 
   const entries = await fs.readdir(safePath.absolutePath, { withFileTypes: true });

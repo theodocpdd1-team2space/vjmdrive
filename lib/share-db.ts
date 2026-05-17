@@ -10,6 +10,7 @@ export type ShareLink = {
   rootPath: string;
   canDownload: boolean;
   expiresAt: string | null;
+  note?: string;
   createdAt: string;
   createdBy: "admin";
 };
@@ -39,15 +40,17 @@ export async function createShareLink(input: {
   rootPath: string;
   canDownload: boolean;
   expiresAt: string | null;
+  note?: string;
 }) {
   const links = await readShareLinks();
-  const token = crypto.randomBytes(18).toString("base64url");
+  const token = crypto.randomBytes(24).toString("hex");
   const link: ShareLink = {
     token,
     name: input.name.trim() || "Shared Folder",
     rootPath: normalizeDrivePath(input.rootPath),
     canDownload: input.canDownload,
     expiresAt: input.expiresAt,
+    note: input.note?.trim() || "",
     createdAt: new Date().toISOString(),
     createdBy: "admin",
   };

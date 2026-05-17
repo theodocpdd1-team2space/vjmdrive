@@ -14,10 +14,11 @@ export async function POST(req: NextRequest) {
   const name = typeof body?.name === "string" ? body.name : "Shared Link";
   const canDownload = body?.canDownload !== false;
   const expiresAt = typeof body?.expiresAt === "string" && body.expiresAt ? body.expiresAt : null;
+  const note = typeof body?.note === "string" ? body.note : "";
 
   try {
     await resolveExisting(rootPath);
-    const link = await createShareLink({ rootPath, name, canDownload, expiresAt });
+    const link = await createShareLink({ rootPath, name, canDownload, expiresAt, note });
     return NextResponse.json({ ok: true, token: link.token, url: `/share/${link.token}`, link });
   } catch (caught) {
     return NextResponse.json(

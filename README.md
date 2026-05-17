@@ -8,7 +8,17 @@ Private asset drive untuk VJMRTIM. Next.js tetap menjadi UI, browser, preview, a
 - Admin bisa browse, preview, download, upload, create folder, rename, move, soft-delete, request preview, create share link, dan melihat storage dashboard.
 - Client masuk lewat `/share/[token]`.
 - Client hanya bisa browse, preview, dan download sesuai share token.
+- Share permission bisa `View only` atau `View + Download`.
 - Share link MVP disimpan di `CACHE_ROOT/db/share-links.json`.
+
+## UI / UX
+
+- Admin dashboard berisi storage cards, HDD usage bar, preview stats, dan quick actions.
+- My Drive punya grid, list, dan compact view.
+- Grid/list memakai thumbnail dari `/api/thumbnail` jika tersedia.
+- Video tidak autoplay di grid; video hanya dimainkan saat preview modal dibuka.
+- Preview file memakai full-screen modal dengan download/copy actions.
+- Mobile memakai full-screen preview modal dan selected action bar.
 
 ## Local Development
 
@@ -90,7 +100,7 @@ DXV/HAP bisa dipreview hanya kalau ffmpeg build di server bisa decode codec ters
 
 ## Preview Queue
 
-Admin bisa request preview dari UI. MVP ini tidak menjalankan ffmpeg berat langsung dari API; request disimpan di:
+Admin bisa request preview dari UI. Queue disimpan di:
 
 ```txt
 CACHE_ROOT/db/preview-queue.json
@@ -102,7 +112,7 @@ Status yang dipakai UI:
 queued | processing | ready | failed
 ```
 
-`POST /api/admin/preview/process-one` saat ini placeholder aman untuk worker manual berikutnya. Untuk generate aktual, jalankan `npm run preview:scan` atau worker ffmpeg terpisah.
+`POST /api/admin/preview/process-one` memproses satu queued item dengan ffmpeg, lalu menulis preview dan thumbnail ke cache root. Untuk batch besar, tetap gunakan `npm run preview:scan` atau worker terpisah agar server tidak berat.
 
 Failed scanner log:
 
@@ -141,11 +151,12 @@ Share link format:
 
 ```json
 {
-  "token": "random-token",
+  "token": "48-byte-hex-token",
   "name": "Client A",
   "rootPath": "2 TB/1-50/16/Part01",
   "canDownload": true,
   "expiresAt": null,
+  "note": "Optional client note",
   "createdAt": "...",
   "createdBy": "admin"
 }
@@ -158,6 +169,8 @@ Client route:
 ```
 
 Client breadcrumb dimulai dari shared root, bukan full `PublicShare`.
+
+Admin bisa membuat share link dari current folder, selected folder, atau selected file. File-root share didukung; client akan melihat satu item sebagai shared root.
 
 ## Direct Download Architecture
 

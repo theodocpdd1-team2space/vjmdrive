@@ -5,23 +5,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   BarChart3,
+  CalendarClock,
   CheckSquare,
   ChevronRight,
   Copy,
   Download,
   Eye,
+  ExternalLink,
   File,
-  FileArchive,
-  FileImage,
   FileText,
   FileVideo,
   Folder,
   FolderPlus,
-  Grid2X2,
   HardDrive,
   Home,
   Link,
-  List,
   Loader2,
   LogOut,
   MoreVertical,
@@ -30,15 +28,24 @@ import {
   Search,
   Settings,
   Share2,
-  Square,
+  Shield,
   Trash2,
   Upload,
   X,
 } from "lucide-react";
+import {
+  DownloadModeBadge,
+  EmptyState,
+  FileThumbnail,
+  PreviewModal,
+  PreviewStatusBadge,
+  SelectionCheckbox,
+  ViewToggle,
+} from "@/components/drive/drive-ui";
 
 type DriveItemType = "folder" | "image" | "video" | "pdf" | "text" | "archive" | "file";
 type PreviewStatus = "native" | "ready" | "missing" | "unsupported" | "queued" | "processing" | "failed";
-type ViewMode = "list" | "grid";
+type ViewMode = "list" | "grid" | "compact";
 type AppView = "dashboard" | "drive" | "queue" | "shares" | "storage" | "settings";
 
 type DriveItem = {
@@ -60,12 +67,13 @@ type DriveItem = {
 };
 
 type StorageData = {
-  assetRoot: { label: string; total: string; used: string; free: string };
-  cacheRoot: { label: string; used: string; path: string };
+  assetRoot: { label: string; total: string; used: string; free: string; totalBytes?: number; usedBytes?: number; freeBytes?: number };
+  cacheRoot: { label: string; used: string; path: string; usedBytes?: number };
   counts: {
     currentFolderItems: number;
     previewReady: number;
     previewMissing: number;
+    previewQueued?: number;
     previewFailed: number;
   };
 };
@@ -86,6 +94,7 @@ type ShareLink = {
   canDownload: boolean;
   expiresAt: string | null;
   createdAt: string;
+  note?: string;
 };
 
 const TEXT_PREVIEW_LIMIT = 256 * 1024;
@@ -94,15 +103,6 @@ function fileUrl(filePath: string, download = false) {
   const params = new URLSearchParams({ path: filePath });
   if (download) params.set("download", "1");
   return `/api/file?${params.toString()}`;
-}
-
-function DriveIcon({ type, className }: { type: DriveItemType; className: string }) {
-  if (type === "folder") return <Folder className={className} />;
-  if (type === "video") return <FileVideo className={className} />;
-  if (type === "image") return <FileImage className={className} />;
-  if (type === "archive") return <FileArchive className={className} />;
-  if (type === "pdf" || type === "text") return <FileText className={className} />;
-  return <File className={className} />;
 }
 
 function typeLabel(item: DriveItem) {
@@ -140,9 +140,10 @@ function downloadModeLabel(item: DriveItem) {
   return item.downloadMode === "direct" ? "Direct" : "App";
 }
 
-function badgeClass(kind: "ok" | "warn" | "muted") {
+function badgeClass(kind: "ok" | "warn" | "muted" | "danger") {
   if (kind === "ok") return "border-emerald-300/20 bg-emerald-300/10 text-emerald-100";
   if (kind === "warn") return "border-amber-300/20 bg-amber-300/10 text-amber-100";
+  if (kind === "danger") return "border-red-300/20 bg-red-300/10 text-red-100";
   return "border-white/10 bg-white/[0.04] text-zinc-300";
 }
 
@@ -180,6 +181,10 @@ export default function HomePage() {
   const [previewText, setPreviewText] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
+  const [previewModalItem, setPreviewModalItem] = useState<DriveItem | null>(null);
+  const [shareTargetPath, setShareTargetPath] = useState<string | null>(null);
+  const [shareResult, setShareResult] = useState<{ url: string; token: string } | null>(null);
+  const [appOrigin, setAppOrigin] = useState("");
   const [storage, setStorage] = useState<StorageData | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [shares, setShares] = useState<ShareLink[]>([]);
@@ -237,6 +242,7 @@ export default function HomePage() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
+      setAppOrigin(window.location.origin);
       void loadDrive("");
       void loadStorage("");
       void loadQueue();
@@ -328,6 +334,7 @@ export default function HomePage() {
     clearPreview();
     setPreviewLoading(item.type === "text");
     setSelected(item);
+    setPreviewModalItem(item);
   }
 
   function goBreadcrumb(index: number) {
@@ -424,17 +431,29 @@ export default function HomePage() {
     await loadDrive(currentPath);
   }
 
-  async function createShareAction(rootPath: string) {
-    const name = window.prompt("Share name / client name", "Client");
-    if (!name) return;
+  function openShareModal(rootPath: string) {
+    setShareTargetPath(rootPath);
+    setShareResult(null);
+  }
+
+  async function createShareAction(input: {
+    rootPath: string;
+    name: string;
+    canDownload: boolean;
+    expiresAt: string | null;
+    note: string;
+  }) {
     const data = await adminJson("/api/admin/share", "POST", {
-      rootPath,
-      name,
-      canDownload: true,
-      expiresAt: null,
+      rootPath: input.rootPath,
+      name: input.name,
+      canDownload: input.canDownload,
+      expiresAt: input.expiresAt,
+      note: input.note,
     });
+    const url = `${appOrigin || window.location.origin}${data.url}`;
+    setShareResult({ url, token: data.token });
     setNotice(`Share created: ${data.url}`);
-    await copyText(`${window.location.origin}${data.url}`);
+    await copyText(url);
     await loadShares();
   }
 
@@ -486,6 +505,15 @@ export default function HomePage() {
     setNotice(`Opening ${files.length} download link(s).`);
   }
 
+  function shareSelectedAction() {
+    if (selectedItems.length === 1) {
+      openShareModal(selectedItems[0].path);
+      return;
+    }
+
+    openShareModal(currentPath);
+  }
+
   const displayedBytes = filtered.reduce((total, item) => total + (item.type === "folder" ? 0 : item.bytes), 0);
   const breadcrumbs = currentPath.split("/").filter(Boolean);
   const selectedVideoPreviewUrl =
@@ -514,12 +542,12 @@ export default function HomePage() {
                 <HardDrive className="h-6 w-6" />
               </div>
               <p className="text-sm font-semibold text-[#d7ff3f]">VJMRTIM</p>
-              <h1 className="mt-2 text-4xl font-semibold text-white md:text-6xl">Asset Drive</h1>
-              <p className="mt-4 max-w-lg text-zinc-400">Private asset management for preview, sharing, and file organization.</p>
+              <h1 className="mt-2 text-4xl font-semibold text-white md:text-6xl">VJMRTIM Asset Drive</h1>
+              <p className="mt-4 max-w-lg text-zinc-400">Private access only</p>
             </div>
             <form onSubmit={login} className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
-              <h2 className="text-xl font-semibold text-white">Admin Login</h2>
-              <label className="mt-5 block text-sm text-zinc-300" htmlFor="password">Password</label>
+              <h2 className="text-xl font-semibold text-white">Enter Drive</h2>
+              <label className="mt-5 block text-sm text-zinc-300" htmlFor="password">Master password</label>
               <input
                 id="password"
                 type="password"
@@ -531,7 +559,7 @@ export default function HomePage() {
               {loginError ? <p className="mt-3 text-sm text-red-200">{loginError}</p> : null}
               <button className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-[#d7ff3f] px-4 py-3 font-semibold text-black">
                 {loggingIn ? <Loader2 className="h-4 w-4 animate-spin" /> : <Home className="h-4 w-4" />}
-                Enter Admin
+                Enter Drive
               </button>
             </form>
           </div>
@@ -581,14 +609,17 @@ export default function HomePage() {
                   />
                 </div>
               </div>
-              <button onClick={logout} className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-300 hover:bg-white/10">
-                <LogOut className="h-4 w-4" />
-                Logout
-              </button>
+              <div className="flex items-center gap-2">
+                <ViewToggle value={viewMode} onChange={setViewMode} />
+                <button onClick={logout} className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-300 hover:bg-white/10">
+                  <LogOut className="h-4 w-4" />
+                  <span className="hidden sm:inline">Logout</span>
+                </button>
+              </div>
             </div>
           </header>
 
-          <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_390px]">
+          <div className="grid gap-4 p-3 md:p-4 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="min-w-0">
               {notice ? (
                 <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-zinc-200">
@@ -614,7 +645,15 @@ export default function HomePage() {
                 />
               )}
               {activeView === "queue" && <QueueView queue={queue} onRefresh={loadQueue} />}
-              {activeView === "shares" && <SharesView shares={shares} onRefresh={loadShares} />}
+              {activeView === "shares" && (
+                <SharesView
+                  shares={shares}
+                  origin={appOrigin}
+                  onRefresh={loadShares}
+                  onCreate={() => openShareModal(currentPath)}
+                  onCopy={copyText}
+                />
+              )}
               {activeView === "settings" && (
                 <div className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
                   <h2 className="text-xl font-semibold">Settings</h2>
@@ -644,8 +683,9 @@ export default function HomePage() {
                   onRename={renameAction}
                   onMove={moveSelectedAction}
                   onDownloadSelected={downloadSelectedAction}
+                  onShareSelected={shareSelectedAction}
                   onDelete={(paths) => void deleteSelectedAction(paths)}
-                  onShare={createShareAction}
+                  onShare={openShareModal}
                   onRequestPreview={(paths) => void requestPreviewAction(paths)}
                   onCopy={copyText}
                   onRetry={() => void loadDrive(currentPath)}
@@ -665,6 +705,28 @@ export default function HomePage() {
           </div>
         </section>
       </div>
+      <PreviewModal
+        key={previewModalItem?.path || "admin-preview"}
+        item={previewModalItem}
+        open={previewModalItem !== null}
+        canDownload
+        isAdmin
+        onClose={() => setPreviewModalItem(null)}
+        onCopy={copyText}
+        onRequestPreview={(path) => void requestPreviewAction([path])}
+      />
+      <ShareModal
+        key={shareTargetPath || "share-modal"}
+        targetPath={shareTargetPath}
+        result={shareResult}
+        origin={appOrigin}
+        onClose={() => {
+          setShareTargetPath(null);
+          setShareResult(null);
+        }}
+        onCreate={(input) => void createShareAction(input)}
+        onCopy={copyText}
+      />
       <input
         ref={uploadInputRef}
         type="file"
@@ -703,15 +765,18 @@ function Dashboard({
   onClear: () => void;
 }) {
   const cards = [
-    ["Total capacity HDD", storage?.assetRoot.total || "-"],
-    ["Used capacity HDD", storage?.assetRoot.used || "-"],
-    ["Free capacity HDD", storage?.assetRoot.free || "-"],
-    ["NVMe preview cache", storage?.cacheRoot.used || "-"],
-    ["Current folder items", String(storage?.counts.currentFolderItems ?? "-")],
-    ["Preview ready", String(storage?.counts.previewReady ?? "-")],
-    ["Preview missing", String(storage?.counts.previewMissing ?? "-")],
-    ["Failed preview", String(storage?.counts.previewFailed ?? "-")],
+    ["HDD Total", storage?.assetRoot.total || "-"],
+    ["HDD Used", storage?.assetRoot.used || "-"],
+    ["HDD Free", storage?.assetRoot.free || "-"],
+    ["Preview Cache", storage?.cacheRoot.used || "-"],
+    ["Current Items", String(storage?.counts.currentFolderItems ?? "-")],
+    ["Preview Ready", String(storage?.counts.previewReady ?? "-")],
+    ["Preview Missing", String(storage?.counts.previewMissing ?? "-")],
+    ["Queue Pending", String(storage?.counts.previewQueued ?? storage?.counts.previewMissing ?? "-")],
   ];
+  const usedPercent = storage?.assetRoot.totalBytes
+    ? Math.min(100, Math.round(((storage.assetRoot.usedBytes || 0) / storage.assetRoot.totalBytes) * 100))
+    : 0;
 
   return (
     <div className="space-y-4">
@@ -727,11 +792,20 @@ function Dashboard({
           <button onClick={onClear} className="rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10">Clear selection</button>
         </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-zinc-400">HDD usage</span>
+          <span className="font-medium text-white">{usedPercent}%</span>
+        </div>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+          <div className="h-full rounded-full bg-[#d7ff3f]" style={{ width: `${usedPercent}%` }} />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         {cards.map(([label, value]) => (
-          <div key={label} className="rounded-lg border border-white/10 bg-white/[0.035] p-4">
+          <div key={label} className="rounded-lg border border-white/10 bg-white/[0.035] p-3 md:p-4">
             <p className="text-xs text-zinc-500">{label}</p>
-            <p className="mt-2 text-xl font-semibold text-white">{value}</p>
+            <p className="mt-2 text-lg font-semibold text-white md:text-xl">{value}</p>
           </div>
         ))}
       </div>
@@ -751,22 +825,29 @@ function QueueView({ queue, onRefresh }: { queue: QueueItem[]; onRefresh: () => 
 
   return (
     <div className="rounded-lg border border-white/10 bg-white/[0.03]">
-      <div className="flex items-center justify-between border-b border-white/10 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 p-4">
         <div>
           <h2 className="text-xl font-semibold">Preview Queue</h2>
           <p className="mt-1 text-sm text-zinc-500">Queued previews are processed by the CLI/worker.</p>
         </div>
-        <button onClick={processNext} className="rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10">Process next preview</button>
+        <div className="flex gap-2">
+          <button onClick={() => void onRefresh()} className="rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10">Refresh</button>
+          <button onClick={processNext} className="rounded-lg bg-[#d7ff3f] px-3 py-2 text-sm font-semibold text-black">Process next</button>
+        </div>
       </div>
       <div className="divide-y divide-white/10">
         {queue.length === 0 ? <p className="p-4 text-sm text-zinc-500">No preview requests.</p> : null}
         {queue.map((item) => (
           <div key={item.id} className="p-4">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="truncate text-sm font-medium text-white">{item.path}</p>
               <span className={`rounded-lg border px-2 py-1 text-xs ${item.status === "failed" ? badgeClass("warn") : badgeClass("muted")}`}>{item.status}</span>
             </div>
             {item.message ? <p className="mt-2 text-xs text-zinc-500">{item.message}</p> : null}
+            <div className="mt-2 flex flex-wrap gap-3 text-xs text-zinc-600">
+              <span>Created {formatDate(item.createdAt)}</span>
+              <span>Updated {formatDate(item.updatedAt)}</span>
+            </div>
           </div>
         ))}
       </div>
@@ -774,7 +855,19 @@ function QueueView({ queue, onRefresh }: { queue: QueueItem[]; onRefresh: () => 
   );
 }
 
-function SharesView({ shares, onRefresh }: { shares: ShareLink[]; onRefresh: () => Promise<void> }) {
+function SharesView({
+  shares,
+  origin,
+  onRefresh,
+  onCreate,
+  onCopy,
+}: {
+  shares: ShareLink[];
+  origin: string;
+  onRefresh: () => Promise<void>;
+  onCreate: () => void;
+  onCopy: (text: string) => void;
+}) {
   async function revoke(token: string) {
     if (!window.confirm("Revoke this share link?")) return;
     await fetch(`/api/admin/shares/${token}`, { method: "DELETE" });
@@ -783,21 +876,177 @@ function SharesView({ shares, onRefresh }: { shares: ShareLink[]; onRefresh: () 
 
   return (
     <div className="rounded-lg border border-white/10 bg-white/[0.03]">
-      <div className="border-b border-white/10 p-4">
-        <h2 className="text-xl font-semibold">Shared Links</h2>
-        <p className="mt-1 text-sm text-zinc-500">Client access tokens stored in cache JSON.</p>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 p-4">
+        <div>
+          <h2 className="text-xl font-semibold">Shared Links</h2>
+          <p className="mt-1 text-sm text-zinc-500">Create client links with view-only or download permission.</p>
+        </div>
+        <button onClick={onCreate} className="rounded-lg bg-[#d7ff3f] px-3 py-2 text-sm font-semibold text-black">New Share Link</button>
       </div>
-      <div className="divide-y divide-white/10">
-        {shares.length === 0 ? <p className="p-4 text-sm text-zinc-500">No share links yet.</p> : null}
+      <div className="grid gap-3 p-3">
+        {shares.length === 0 ? <EmptyState icon={Share2} title="No share links yet" body="Create a link from My Drive or from this page." /> : null}
         {shares.map((share) => (
-          <div key={share.token} className="grid gap-3 p-4 md:grid-cols-[1fr_auto] md:items-center">
+          <div key={share.token} className="rounded-lg border border-white/10 bg-black/20 p-4">
             <div className="min-w-0">
-              <p className="font-medium text-white">{share.name}</p>
-              <p className="mt-1 truncate text-xs text-zinc-500">{share.rootPath || "PublicShare"} - /share/{share.token}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-medium text-white">{share.name}</p>
+                <span className={`rounded-md border px-2 py-0.5 text-[11px] ${isShareExpired(share) ? badgeClass("danger") : badgeClass("ok")}`}>
+                  {isShareExpired(share) ? "Expired" : "Active"}
+                </span>
+                <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-zinc-300">
+                  {share.canDownload ? "View + Download" : "View only"}
+                </span>
+              </div>
+              <p className="mt-2 truncate text-xs text-zinc-500" title={share.rootPath || "PublicShare"}>{share.rootPath || "PublicShare"}</p>
+              {share.note ? <p className="mt-2 text-xs text-zinc-500">{share.note}</p> : null}
+              <div className="mt-3 grid gap-2 text-xs text-zinc-500 md:grid-cols-2">
+                <span>Created: {formatDate(share.createdAt)}</span>
+                <span>Expires: {share.expiresAt ? formatDate(share.expiresAt) : "Never"}</span>
+              </div>
+              <p className="mt-3 truncate rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-xs text-zinc-300">
+                {origin}/share/{share.token}
+              </p>
             </div>
-            <button onClick={() => revoke(share.token)} className="rounded-lg border border-red-300/20 px-3 py-2 text-sm text-red-200 hover:bg-red-500/10">Revoke</button>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button onClick={() => onCopy(`${origin}/share/${share.token}`)} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"><Copy className="h-4 w-4" />Copy</button>
+              <a href={`/share/${share.token}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"><ExternalLink className="h-4 w-4" />Open</a>
+              <button onClick={() => revoke(share.token)} className="rounded-lg border border-red-300/20 px-3 py-2 text-sm text-red-200 hover:bg-red-500/10">Revoke</button>
+            </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function isShareExpired(share: ShareLink) {
+  return Boolean(share.expiresAt && new Date(share.expiresAt).getTime() < Date.now());
+}
+
+function ShareModal({
+  targetPath,
+  result,
+  origin,
+  onClose,
+  onCreate,
+  onCopy,
+}: {
+  targetPath: string | null;
+  result: { url: string; token: string } | null;
+  origin: string;
+  onClose: () => void;
+  onCreate: (input: { rootPath: string; name: string; canDownload: boolean; expiresAt: string | null; note: string }) => void;
+  onCopy: (text: string) => void;
+}) {
+  const [name, setName] = useState("Client Share");
+  const [canDownload, setCanDownload] = useState(true);
+  const [expiry, setExpiry] = useState<"never" | "1d" | "7d" | "30d" | "custom">("never");
+  const [customDate, setCustomDate] = useState("");
+  const [note, setNote] = useState("");
+
+  if (!targetPath) return null;
+  const activeTargetPath = targetPath;
+
+  function expiresAt() {
+    if (expiry === "never") return null;
+    if (expiry === "custom") return customDate ? new Date(customDate).toISOString() : null;
+    const days = expiry === "1d" ? 1 : expiry === "7d" ? 7 : 30;
+    return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onCreate({
+      rootPath: activeTargetPath,
+      name,
+      canDownload,
+      expiresAt: expiresAt(),
+      note,
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4">
+      <div className="max-h-[92vh] w-full overflow-auto rounded-t-xl border border-white/10 bg-[#101217] p-4 shadow-2xl md:max-w-xl md:rounded-xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-[#d7ff3f]">SHARE ACCESS</p>
+            <h2 className="mt-1 text-xl font-semibold text-white">Create Share Link</h2>
+            <p className="mt-1 text-sm text-zinc-500">Root: {activeTargetPath || "PublicShare"}</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-2 text-zinc-400 hover:bg-white/10 hover:text-white" aria-label="Close share modal">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="mt-5 space-y-4">
+          <label className="block">
+            <span className="text-sm text-zinc-300">Share name / client</span>
+            <input value={name} onChange={(event) => setName(event.target.value)} className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-[#d7ff3f]" />
+          </label>
+
+          <div>
+            <p className="text-sm text-zinc-300">Permission</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <button type="button" onClick={() => setCanDownload(false)} className={`rounded-lg border p-3 text-left ${!canDownload ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
+                <Shield className="h-4 w-4 text-[#d7ff3f]" />
+                <p className="mt-2 text-sm font-medium text-white">View only</p>
+                <p className="mt-1 text-xs text-zinc-500">Preview enabled, download hidden.</p>
+              </button>
+              <button type="button" onClick={() => setCanDownload(true)} className={`rounded-lg border p-3 text-left ${canDownload ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
+                <Download className="h-4 w-4 text-[#d7ff3f]" />
+                <p className="mt-2 text-sm font-medium text-white">View + Download</p>
+                <p className="mt-1 text-xs text-zinc-500">Client can preview and download.</p>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-sm text-zinc-300">Expiry</p>
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {[
+                ["never", "Never"],
+                ["1d", "1 day"],
+                ["7d", "7 days"],
+                ["30d", "30 days"],
+                ["custom", "Custom"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setExpiry(value as typeof expiry)}
+                  className={`rounded-lg border px-3 py-2 text-sm ${expiry === value ? "border-[#d7ff3f] bg-[#d7ff3f]/10 text-white" : "border-white/10 text-zinc-400"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {expiry === "custom" ? (
+              <label className="mt-2 flex items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+                <CalendarClock className="h-4 w-4 text-zinc-500" />
+                <input type="datetime-local" value={customDate} onChange={(event) => setCustomDate(event.target.value)} className="w-full bg-transparent text-sm outline-none" />
+              </label>
+            ) : null}
+          </div>
+
+          <label className="block">
+            <span className="text-sm text-zinc-300">Optional note</span>
+            <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-[#d7ff3f]" />
+          </label>
+
+          <button className="w-full rounded-lg bg-[#d7ff3f] px-4 py-3 text-sm font-semibold text-black">Generate Link</button>
+        </form>
+
+        {result ? (
+          <div className="mt-5 rounded-lg border border-emerald-300/20 bg-emerald-300/10 p-3">
+            <p className="text-sm font-medium text-emerald-100">Share link ready</p>
+            <p className="mt-2 break-all rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-zinc-200">{result.url}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button onClick={() => onCopy(result.url)} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200"><Copy className="h-4 w-4" />Copy</button>
+              <a href={result.url || `${origin}/share/${result.token}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200"><ExternalLink className="h-4 w-4" />Open</a>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -825,6 +1074,7 @@ function DriveView(props: {
   onRename: (item: DriveItem) => void;
   onMove: () => void;
   onDownloadSelected: () => void;
+  onShareSelected: () => void;
   onDelete: (paths: string[]) => void;
   onShare: (rootPath: string) => void;
   onRequestPreview: (paths: string[]) => void;
@@ -856,18 +1106,21 @@ function DriveView(props: {
           <div className="flex flex-wrap gap-2">
             <button onClick={props.onCreateFolder} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"><FolderPlus className="h-4 w-4" />New Folder</button>
             <button onClick={props.onUploadClick} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"><Upload className="h-4 w-4" />Upload</button>
+            <button onClick={() => props.onShare(props.currentPath)} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"><Share2 className="h-4 w-4" />Share current</button>
             <button onClick={props.onSelectAll} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"><CheckSquare className="h-4 w-4" />Select all</button>
             <button onClick={props.onClear} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"><X className="h-4 w-4" />Clear</button>
-            <button onClick={() => props.onToggleView("list")} className={`rounded-lg p-2 ${props.viewMode === "list" ? "bg-[#d7ff3f] text-black" : "border border-white/10 text-zinc-300"}`}><List className="h-4 w-4" /></button>
-            <button onClick={() => props.onToggleView("grid")} className={`rounded-lg p-2 ${props.viewMode === "grid" ? "bg-[#d7ff3f] text-black" : "border border-white/10 text-zinc-300"}`}><Grid2X2 className="h-4 w-4" /></button>
+            <ViewToggle value={props.viewMode} onChange={props.onToggleView} />
           </div>
         </div>
         {props.selectedPaths.size > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-2 border-t border-white/10 pt-3">
+          <div className="sticky bottom-3 z-30 mt-3 flex flex-wrap gap-2 rounded-lg border border-white/10 bg-[#101217]/95 p-2 shadow-2xl backdrop-blur md:static md:border-t md:bg-transparent md:p-0 md:pt-3 md:shadow-none">
+            <span className="inline-flex items-center rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200">{props.selectedPaths.size} selected</span>
             <button onClick={() => props.onRequestPreview(props.selectedItems.map((item) => item.path))} className="rounded-lg bg-[#d7ff3f] px-3 py-2 text-sm font-semibold text-black">Request preview</button>
             <button onClick={props.onDownloadSelected} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200"><Download className="h-4 w-4" />Download selected</button>
+            <button onClick={props.onShareSelected} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200"><Share2 className="h-4 w-4" />Share</button>
             <button onClick={props.onMove} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200"><MoveRight className="h-4 w-4" />Move</button>
             <button onClick={() => props.onDelete(Array.from(props.selectedPaths))} className="inline-flex items-center gap-2 rounded-lg border border-red-300/20 px-3 py-2 text-sm text-red-200"><Trash2 className="h-4 w-4" />Delete</button>
+            <button onClick={props.onClear} className="rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200">Clear</button>
           </div>
         ) : null}
       </div>
@@ -886,14 +1139,14 @@ function DriveView(props: {
             <Folder className="h-10 w-10" />
             <p>Folder kosong atau tidak ada hasil search.</p>
           </div>
-        ) : props.viewMode === "list" ? (
+        ) : props.viewMode === "list" || props.viewMode === "compact" ? (
           <div className="divide-y divide-white/10">
             {props.filtered.map((item) => (
-              <DriveRow key={item.path} item={item} checked={props.selectedPaths.has(item.path)} {...props} />
+              <DriveRow key={item.path} item={item} checked={props.selectedPaths.has(item.path)} compact={props.viewMode === "compact"} {...props} />
             ))}
           </div>
         ) : (
-          <div className="grid gap-3 p-3 md:grid-cols-2 2xl:grid-cols-3">
+          <div className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {props.filtered.map((item) => (
               <DriveCard key={item.path} item={item} checked={props.selectedPaths.has(item.path)} {...props} />
             ))}
@@ -904,23 +1157,21 @@ function DriveView(props: {
   );
 }
 
-function DriveRow({ item, checked, ...props }: { item: DriveItem; checked: boolean } & Parameters<typeof DriveView>[0]) {
+function DriveRow({ item, checked, compact, ...props }: { item: DriveItem; checked: boolean; compact: boolean } & Parameters<typeof DriveView>[0]) {
   return (
-    <div className="grid gap-2 px-3 py-2 md:grid-cols-[42px_minmax(0,1fr)_110px_105px_180px] md:items-center">
-      <button onClick={() => props.onToggleSelect(item.path)} className="flex h-10 w-10 items-center justify-center rounded-lg text-zinc-400 hover:bg-white/10">
-        {checked ? <CheckSquare className="h-5 w-5 text-[#d7ff3f]" /> : <Square className="h-5 w-5" />}
-      </button>
+    <div className={`grid gap-2 px-3 ${compact ? "py-1.5" : "py-2"} md:grid-cols-[42px_minmax(0,1fr)_90px_90px_120px_74px_44px] md:items-center`}>
+      <SelectionCheckbox checked={checked} onClick={() => props.onToggleSelect(item.path)} />
       <button onClick={() => item.type === "folder" ? props.onOpenFolder(item) : props.onPreview(item)} className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-3 text-left">
-        <span className={`flex h-10 w-10 items-center justify-center rounded-lg border ${item.type === "folder" ? "border-[#d7ff3f]/20 bg-[#d7ff3f]/10 text-[#d7ff3f]" : "border-white/10 bg-black/20 text-zinc-400"}`}>
-          <DriveIcon type={item.type} className="h-5 w-5" />
-        </span>
+        <FileThumbnail item={item} size="row" />
         <span className="min-w-0">
-          <span className="block truncate text-sm font-medium text-white">{item.name}</span>
+          <span className="block truncate text-sm font-medium text-white" title={item.name}>{item.name}</span>
           <span className="mt-1 block truncate text-xs text-zinc-500">{typeLabel(item)} - {previewStatusLabel(item)} - {downloadModeLabel(item)}</span>
         </span>
       </button>
-      <span className={`hidden rounded-lg border px-2 py-1 text-center text-xs md:inline-block ${previewBadgeClass(item.previewStatus)}`}>{previewStatusLabel(item)}</span>
+      <span className="hidden text-sm text-zinc-400 md:block">{typeLabel(item)}</span>
       <span className="hidden text-right text-sm text-zinc-500 md:block">{item.size || "-"}</span>
+      <span className="hidden md:block"><PreviewStatusBadge item={item} /></span>
+      <span className="hidden md:block"><DownloadModeBadge item={item} /></span>
       <ItemActions item={item} {...props} />
     </div>
   );
@@ -928,15 +1179,19 @@ function DriveRow({ item, checked, ...props }: { item: DriveItem; checked: boole
 
 function DriveCard({ item, checked, ...props }: { item: DriveItem; checked: boolean } & Parameters<typeof DriveView>[0]) {
   return (
-    <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+    <div className="group flex min-h-[230px] flex-col rounded-lg border border-white/10 bg-black/20 p-3 transition hover:border-white/20 hover:bg-white/[0.05]">
       <div className="mb-3 flex items-center justify-between">
-        <button onClick={() => props.onToggleSelect(item.path)} className="rounded-lg p-2 text-zinc-400 hover:bg-white/10">{checked ? <CheckSquare className="h-5 w-5 text-[#d7ff3f]" /> : <Square className="h-5 w-5" />}</button>
+        <SelectionCheckbox checked={checked} onClick={() => props.onToggleSelect(item.path)} />
         <ItemActions item={item} {...props} />
       </div>
-      <button onClick={() => item.type === "folder" ? props.onOpenFolder(item) : props.onPreview(item)} className="w-full text-left">
-        <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-zinc-300"><DriveIcon type={item.type} className="h-6 w-6" /></span>
-        <span className="line-clamp-2 text-sm font-medium text-white">{item.name}</span>
-        <span className="mt-2 block text-xs text-zinc-500">{typeLabel(item)} - {item.size || "Folder"}</span>
+      <button onClick={() => item.type === "folder" ? props.onOpenFolder(item) : props.onPreview(item)} className="flex flex-1 flex-col text-left">
+        <FileThumbnail item={item} />
+        <span className="mt-3 line-clamp-2 min-h-10 text-sm font-medium text-white" title={item.name}>{item.name}</span>
+        <span className="mt-2 flex flex-wrap gap-1.5">
+          <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-zinc-300">{typeLabel(item)}</span>
+          <PreviewStatusBadge item={item} />
+        </span>
+        <span className="mt-auto pt-2 text-xs text-zinc-500">{item.size || "Folder"}</span>
       </button>
     </div>
   );
@@ -997,7 +1252,7 @@ function DetailPanel({
 }) {
   if (!selected) {
     return (
-      <aside className="rounded-lg border border-white/10 bg-white/[0.035] p-4 xl:sticky xl:top-24 xl:h-[calc(100vh-7rem)]">
+      <aside className="hidden rounded-lg border border-white/10 bg-white/[0.035] p-4 xl:sticky xl:top-24 xl:block xl:h-[calc(100vh-7rem)]">
         <div className="flex h-full min-h-72 flex-col items-center justify-center gap-3 text-center text-zinc-500">
           <File className="h-9 w-9" />
           <p className="text-sm">Select a file to preview details.</p>
@@ -1007,7 +1262,7 @@ function DetailPanel({
   }
 
   return (
-    <aside className="rounded-lg border border-white/10 bg-white/[0.035] p-4 xl:sticky xl:top-24 xl:max-h-[calc(100vh-7rem)] xl:overflow-auto">
+    <aside className="hidden rounded-lg border border-white/10 bg-white/[0.035] p-4 xl:sticky xl:top-24 xl:block xl:max-h-[calc(100vh-7rem)] xl:overflow-auto">
       <div className="space-y-4">
         <div>
           <p className="text-xs font-semibold text-[#d7ff3f]">DETAIL</p>

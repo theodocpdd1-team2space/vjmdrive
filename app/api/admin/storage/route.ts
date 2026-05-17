@@ -54,7 +54,8 @@ export async function GET(req: NextRequest) {
   const currentFolderItems = folder.items.length;
   const previewReady = previewFiles.filter((name) => name.endsWith(".mp4")).length;
   const previewFailed = queue.filter((item) => item.status === "failed").length;
-  const previewMissing = queue.filter((item) => item.status === "queued" || item.status === "processing").length;
+  const previewQueued = queue.filter((item) => item.status === "queued" || item.status === "processing").length;
+  const previewMissing = folder.items.filter((item) => item.type === "video" && item.previewStatus === "missing").length;
 
   return NextResponse.json({
     ok: true,
@@ -63,16 +64,21 @@ export async function GET(req: NextRequest) {
       total: formatBytes(assetDisk.total),
       used: formatBytes(assetDisk.used),
       free: formatBytes(assetDisk.free),
+      totalBytes: assetDisk.total,
+      usedBytes: assetDisk.used,
+      freeBytes: assetDisk.free,
     },
     cacheRoot: {
       label: "Preview Cache",
       used: formatBytes(cacheUsed || cacheDisk.used),
+      usedBytes: cacheUsed || cacheDisk.used,
       path: "vjm-drive",
     },
     counts: {
       currentFolderItems,
       previewReady,
       previewMissing,
+      previewQueued,
       previewFailed,
     },
   });
