@@ -1,12 +1,26 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { readShareAccessRequests } from "@/lib/share-access-requests";
+import { AdminShell } from "@/components/layout/admin-shell";
 import { AccessRequestsClient } from "./requests-client";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminAccessRequestsPage() {
   const user = await getCurrentUser();
-  if (!user || user.role !== "ADMIN") redirect("/admin");
-  return <AccessRequestsClient initialRequests={await readShareAccessRequests()} />;
+
+  if (!user || user.role !== "ADMIN") {
+    redirect("/admin");
+  }
+
+  const requests = await readShareAccessRequests();
+
+  return (
+    <AdminShell
+      title="Access Requests"
+      subtitle="Review, approve, or reject private share access requests."
+    >
+      <AccessRequestsClient initialRequests={requests} />
+    </AdminShell>
+  );
 }
