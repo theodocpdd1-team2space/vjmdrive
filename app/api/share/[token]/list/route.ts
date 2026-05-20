@@ -1,30 +1,53 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listDriveFolder } from "@/lib/drive-list";
 import { getCurrentUser } from "@/lib/auth";
-import { canUserAccessShare, getValidShareLink } from "@/lib/share-db";
+import { canUserAccessShare, getShareAccessReason, getValidShareLink } from "@/lib/share-db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest, ctx: RouteContext<"/api/share/[token]/list">) {
   const { token } = await ctx.params;
+
   const share = await getValidShareLink(token);
-  if (!share) return NextResponse.json({ ok: false, message: "Share link expired or not found" }, { status: 404 });
-  const user = await getCurrentUser();
-  if (!canUserAccessShare(share, user)) {
+
+  if (!share) {
     return NextResponse.json(
       {
         ok: false,
-        message: user ? "Access denied for this email." : "Please login to access this private share.",
+        code: "SHARE_NOT_FOUND",
+        message: "Share link expired or not found.",
       },
-      { status: user ? 403 : 401 }
+      { status: 404 }
+    );
+  }
+
+  const user = await getCurrentUser();
+  const accessReason = getShareAccessReason(share, user);
+
+  if (!canUserAccessShare(share, user)) {
+    const loginUrl = `/login?next=${encodeURIComponent(`/share/${token}`)}`;
+
+    return NextResponse.json(
+      {
+        ok: false,
+        code: accessReason,
+        requiresLogin: accessReason === "LOGIN_REQUIRED",
+        loginUrl,
+        message:
+          accessReason === "LOGIN_REQUIRED"
+            ? "Please login first to access this share."
+            : "Access denied. Your email is not allowed to open this share.",
+      },
+      { status: accessReason === "LOGIN_REQUIRED" ? 401 : 403 }
     );
   }
 
   try {
-    const path = req.nextUrl.searchParams.get("path") || "";
+    const requestedPath = req.nextUrl.searchParams.get("path") || "";
+
     const data = await listDriveFolder({
-      path,
+      path: requestedPath,
       scopeRootPath: share.rootPath,
       urlPrefix: `/api/share/${token}`,
       canDownload: share.canDownload,
@@ -33,11 +56,17 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/share/[token
     return NextResponse.json({
       ok: true,
       share: {
+        id: share.id,
+        token: share.token,
         name: share.name,
         title: share.title,
+        rootPath: share.rootPath,
         canDownload: share.downloadEnabled,
+        downloadEnabled: share.downloadEnabled,
+        previewEnabled: share.previewEnabled,
         permission: share.permission,
         visibility: share.visibility,
+        allowedEmails: share.allowedEmails,
         expiresAt: share.expiresAt,
         note: share.note || "",
       },
@@ -45,7 +74,11 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/share/[token
     });
   } catch (caught) {
     return NextResponse.json(
-      { ok: false, message: caught instanceof Error ? caught.message : "Folder not found" },
+      {
+        ok: false,
+        code: "FOLDER_NOT_FOUND",
+        message: caught instanceof Error ? caught.message : "Folder not found.",
+      },
       { status: 404 }
     );
   }

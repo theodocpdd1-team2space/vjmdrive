@@ -53,9 +53,23 @@ function uniqueEmails(emails: string[]) {
   );
 }
 
+function normalizePermission(
+  permission?: SharePermission,
+  canDownload?: boolean
+): SharePermission {
+  if (permission) return permission;
+  return canDownload === false ? "VIEW_ONLY" : "DOWNLOAD";
+}
+
+function normalizeVisibility(visibility?: ShareVisibility): ShareVisibility {
+  if (visibility === "PRIVATE_EMAILS") return "PRIVATE_EMAILS";
+  return "PUBLIC";
+}
+
 function normalizeShare(raw: Partial<ShareLink> & { canDownload?: boolean }): ShareLink {
   const now = new Date().toISOString();
-  const permission = raw.permission || (raw.canDownload === false ? "VIEW_ONLY" : "DOWNLOAD");
+
+  const permission = normalizePermission(raw.permission, raw.canDownload);
   const downloadEnabled = raw.downloadEnabled ?? raw.canDownload ?? permission !== "VIEW_ONLY";
   const title = raw.title || raw.name || "Shared Drive";
 
@@ -67,7 +81,7 @@ function normalizeShare(raw: Partial<ShareLink> & { canDownload?: boolean }): Sh
     rootPath: normalizeDrivePath(raw.rootPath || ""),
     ownerUserId: raw.ownerUserId || "admin",
     permission,
-    visibility: raw.visibility || "PUBLIC",
+    visibility: normalizeVisibility(raw.visibility),
     allowedEmails: uniqueEmails(raw.allowedEmails || []),
     invitedEmails: uniqueEmails(raw.invitedEmails || []),
     expiresAt: raw.expiresAt || null,
@@ -85,9 +99,11 @@ function normalizeShare(raw: Partial<ShareLink> & { canDownload?: boolean }): Sh
 
 export async function readShareLinks(): Promise<ShareLink[]> {
   await ensureDbDir();
+
   const raw = await fs
     .readFile(dbPath(), "utf8")
     .catch(() => fs.readFile(legacyDbPath(), "utf8").catch(() => "[]"));
+
   const data = JSON.parse(raw) as Array<Partial<ShareLink>>;
   return Array.isArray(data) ? data.map(normalizeShare) : [];
 }
@@ -113,9 +129,11 @@ export async function createShareLink(input: {
 }) {
   const links = await readShareLinks();
   const now = new Date().toISOString();
-  const permission = input.permission || (input.canDownload === false ? "VIEW_ONLY" : "DOWNLOAD");
+
+  const permission = normalizePermission(input.permission, input.canDownload);
   const downloadEnabled = input.downloadEnabled ?? input.canDownload ?? permission !== "VIEW_ONLY";
   const title = (input.title || input.name || "Shared Drive").trim();
+
   const link: ShareLink = {
     id: crypto.randomUUID(),
     token: crypto.randomBytes(24).toString("hex"),
@@ -124,7 +142,7 @@ export async function createShareLink(input: {
     rootPath: normalizeDrivePath(input.rootPath),
     ownerUserId: input.ownerUserId || "admin",
     permission,
-    visibility: input.visibility || "PUBLIC",
+    visibility: normalizeVisibility(input.visibility),
     allowedEmails: uniqueEmails(input.allowedEmails || []),
     invitedEmails: [],
     expiresAt: input.expiresAt,
@@ -148,9 +166,17 @@ export async function createShareLink(input: {
 export async function updateShareLink(token: string, patch: Partial<ShareLink>) {
   const links = await readShareLinks();
   const index = links.findIndex((candidate) => candidate.token === token);
+
   if (index === -1) return null;
-  links[index] = normalizeShare({ ...links[index], ...patch, updatedAt: new Date().toISOString() });
+
+  links[index] = normalizeShare({
+    ...links[index],
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  });
+
   await writeShareLinks(links);
+
   return links[index];
 }
 
@@ -165,17 +191,58 @@ export async function getValidShareLink(token: string) {
   return link;
 }
 
+/**
+ * Final driveOne share rule:
+ *
+ * PUBLIC:
+ * - Still requires login.
+ * - Any logged-in user can open the share.
+ *
+ * PRIVATE_EMAILS:
+ * - Requires login.
+ * - Logged-in user's email must be in allowedEmails.
+ *
+ * Anonymous visitors must never access any share content.
+ */
 export function canUserAccessShare(share: ShareLink, user: SessionUser | null) {
-  if (share.visibility === "PUBLIC") return true;
-  if (!user) return false;
+  if (!user?.email) return false;
+
+  if (share.visibility === "PUBLIC") {
+    return true;
+  }
+
   return share.allowedEmails.includes(normalizeEmail(user.email));
+}
+
+export function getShareAccessReason(share: ShareLink, user: SessionUser | null) {
+  if (!user?.email) {
+    return "LOGIN_REQUIRED";
+  }
+
+  if (share.visibility === "PUBLIC") {
+    return "ALLOWED";
+  }
+
+  if (!share.allowedEmails.includes(normalizeEmail(user.email))) {
+    return "EMAIL_NOT_ALLOWED";
+  }
+
+  return "ALLOWED";
 }
 
 export async function revokeShareLink(token: string) {
   const links = await readShareLinks();
   const index = links.findIndex((candidate) => candidate.token === token);
+
   if (index === -1) return 0;
-  links[index] = { ...links[index], disabledAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+
+  links[index] = {
+    ...links[index],
+    disabledAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
   await writeShareLinks(links);
+
   return 1;
 }
