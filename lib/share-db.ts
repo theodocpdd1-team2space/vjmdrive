@@ -136,19 +136,81 @@ export async function createShareLink(input: {
   const now = new Date().toISOString();
 
   const permission = normalizePermission(input.permission, input.canDownload);
-  const downloadEnabled = input.downloadEnabled ?? input.canDownload ?? permission !== "VIEW_ONLY";
+  const visibility = normalizeVisibility(input.visibility);
+  const rootPath = normalizeDrivePath(input.rootPath);
+  const incomingEmails = uniqueEmails(input.allowedEmails || []);
   const title = (input.title || input.name || "Shared Drive").trim();
+
+  /**
+   * driveOne access-link rule:
+   *
+   * 1 rootPath + 1 visibility + 1 permission = 1 active access link.
+   *
+   * If an active link already exists for the same rootPath, visibility,
+   * and permission, reuse that link and merge allowedEmails.
+   *
+   * Different permission / visibility may create another link.
+   * Parent and child folders may each have their own access link.
+   */
+  const existingIndex = links.findIndex((candidate) => {
+    if (candidate.disabledAt) return false;
+    if (candidate.expiresAt && new Date(candidate.expiresAt).getTime() < Date.now()) return false;
+
+    return (
+      normalizeDrivePath(candidate.rootPath || "") === rootPath &&
+      candidate.visibility === visibility &&
+      candidate.permission === permission
+    );
+  });
+
+  if (existingIndex !== -1) {
+    const existing = links[existingIndex];
+
+    const mergedAllowedEmails = uniqueEmails([
+      ...(existing.allowedEmails || []),
+      ...incomingEmails,
+    ]);
+
+    const downloadEnabled =
+      input.downloadEnabled ??
+      input.canDownload ??
+      existing.downloadEnabled ??
+      permission !== "VIEW_ONLY";
+
+    links[existingIndex] = normalizeShare({
+      ...existing,
+      title: existing.title || title,
+      name: existing.name || existing.title || title,
+      rootPath,
+      visibility,
+      permission,
+      allowedEmails: mergedAllowedEmails,
+      downloadEnabled,
+      previewEnabled: input.previewEnabled ?? existing.previewEnabled ?? true,
+      canDownload: downloadEnabled,
+      expiresAt: input.expiresAt ?? existing.expiresAt,
+      note: input.note?.trim() || existing.note || "",
+      pinned: input.pinned ?? existing.pinned ?? false,
+      updatedAt: now,
+    });
+
+    await writeShareLinks(links);
+
+    return links[existingIndex];
+  }
+
+  const downloadEnabled = input.downloadEnabled ?? input.canDownload ?? permission !== "VIEW_ONLY";
 
   const link: ShareLink = {
     id: crypto.randomUUID(),
     token: crypto.randomBytes(24).toString("hex"),
     title,
     name: title,
-    rootPath: normalizeDrivePath(input.rootPath),
+    rootPath,
     ownerUserId: input.ownerUserId || "admin",
     permission,
-    visibility: normalizeVisibility(input.visibility),
-    allowedEmails: uniqueEmails(input.allowedEmails || []),
+    visibility,
+    allowedEmails: incomingEmails,
     invitedEmails: [],
     expiresAt: input.expiresAt,
     passwordHash: null,
