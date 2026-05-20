@@ -47,7 +47,7 @@ import {
   ViewToggle,
 } from "@/components/drive/drive-ui";
 
-type DriveItemType = "folder" | "image" | "video" | "pdf" | "text" | "archive" | "file";
+type DriveItemType = "folder" | "image" | "video" | "audio" | "pdf" | "document" | "spreadsheet" | "presentation" | "text" | "archive" | "design" | "file";
 type PreviewStatus = "native" | "ready" | "missing" | "unsupported" | "queued" | "processing" | "failed";
 type ViewMode = "list" | "grid" | "compact";
 type AppView = "dashboard" | "drive" | "queue" | "shares" | "storage" | "settings";
@@ -102,7 +102,10 @@ type ShareLink = {
   permission?: "VIEW_ONLY" | "DOWNLOAD" | "UPLOAD" | "FULL";
   expiresAt: string | null;
   createdAt: string;
+  updatedAt?: string;
   note?: string;
+  disabledAt?: string | null;
+  pinned?: boolean;
 };
 
 const TEXT_PREVIEW_LIMIT = 256 * 1024;
@@ -600,6 +603,14 @@ export default function AdminDriveApp() {
     }
   }
 
+  async function updateShareAllowedEmails(token: string, allowedEmails: string[]) {
+    await adminJson(`/api/admin/shares/${token}`, "PATCH", {
+      allowedEmails,
+      visibility: allowedEmails.length > 0 ? "PRIVATE_EMAILS" : "PUBLIC",
+    });
+    await loadShares();
+  }
+
   async function requestPreviewAction(paths: string[]) {
     const data = await adminJson("/api/admin/preview/request", "POST", { paths });
     setNotice(`${data.added} preview request(s) queued.`);
@@ -875,12 +886,14 @@ export default function AdminDriveApp() {
         targetPath={shareTargetPath}
         result={shareResult}
         origin={appOrigin}
+        shares={shares}
         onClose={() => {
           setShareTargetPath(null);
           setShareResult(null);
         }}
         onCreate={createShareAction}
         onCopy={copyText}
+        onUpdateShareEmails={updateShareAllowedEmails}
       />
       <UploadModal
         open={uploadModalOpen}
@@ -1092,10 +1105,20 @@ function SharesView({
   onCopy: (text: string) => void;
 }) {
   const [revokeTarget, setRevokeTarget] = useState<ShareLink | null>(null);
+  const [revoking, setRevoking] = useState(false);
+  const [error, setError] = useState("");
 
   async function revoke() {
-    if (!revokeTarget) return;
-    await fetch(`/api/admin/shares/${revokeTarget.token}`, { method: "DELETE" });
+    if (!revokeTarget || revoking) return;
+    setRevoking(true);
+    setError("");
+    const res = await fetch(`/api/admin/shares/${revokeTarget.token}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    setRevoking(false);
+    if (!res.ok || !data.ok) {
+      setError(data.message || "Disable link failed.");
+      return;
+    }
     setRevokeTarget(null);
     await onRefresh();
   }
@@ -1110,6 +1133,7 @@ function SharesView({
           </div>
           <button onClick={onCreate} className="rounded-lg bg-[#d7ff3f] px-3 py-2 text-sm font-semibold text-black">New Share Link</button>
         </div>
+        {error ? <p className="mx-3 mt-3 rounded-lg border border-red-300/20 bg-red-300/10 px-3 py-2 text-sm text-red-100">{error}</p> : null}
         <div className="grid gap-3 p-3">
           {shares.length === 0 ? <EmptyState icon={Share2} title="No share links yet" body="Create a link from My Drive or from this page." /> : null}
           {shares.map((share) => (
@@ -1143,7 +1167,7 @@ function SharesView({
               <div className="mt-4 flex flex-wrap gap-2">
                 <button onClick={() => onCopy(`${origin}/share/${share.token}`)} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"><Copy className="h-4 w-4" />Copy</button>
                 <a href={`/share/${share.token}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"><ExternalLink className="h-4 w-4" />Open</a>
-                <button onClick={() => setRevokeTarget(share)} className="rounded-lg border border-red-300/20 px-3 py-2 text-sm text-red-200 hover:bg-red-500/10">Revoke</button>
+                <button onClick={() => setRevokeTarget(share)} className="rounded-lg border border-red-300/20 px-3 py-2 text-sm text-red-200 hover:bg-red-500/10">Disable link</button>
               </div>
             </div>
           ))}
@@ -1151,11 +1175,14 @@ function SharesView({
       </div>
       <ConfirmModal
         open={revokeTarget !== null}
-        title="Revoke share link?"
-        body={`Client access for ${revokeTarget?.name || "this link"} will stop immediately.`}
-        confirmLabel="Revoke"
+        title="Disable share link?"
+        body={`All access for ${revokeTarget?.name || "this link"} will stop immediately. Removing a single email should be done from Edit Access instead.`}
+        confirmLabel="Disable link"
         danger
-        onClose={() => setRevokeTarget(null)}
+        loading={revoking}
+        onClose={() => {
+          if (!revoking) setRevokeTarget(null);
+        }}
         onConfirm={() => void revoke()}
       />
     </>
@@ -1170,13 +1197,16 @@ function ShareModal({
   targetPath,
   result,
   origin,
+  shares,
   onClose,
   onCreate,
   onCopy,
+  onUpdateShareEmails,
 }: {
   targetPath: string | null;
   result: { url: string; token: string; permission: string; expiresAt: string | null; allowedEmails: string[] } | null;
   origin: string;
+  shares: ShareLink[];
   onClose: () => void;
   onCreate: (input: {
     rootPath: string;
@@ -1189,6 +1219,7 @@ function ShareModal({
     permission: "VIEW_ONLY" | "DOWNLOAD";
   }) => Promise<void>;
   onCopy: (text: string) => void;
+  onUpdateShareEmails: (token: string, allowedEmails: string[]) => Promise<void>;
 }) {
   const [name, setName] = useState("Client Share");
   const [canDownload, setCanDownload] = useState(true);
@@ -1199,9 +1230,23 @@ function ShareModal({
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
+  const [accessSearch, setAccessSearch] = useState("");
 
   if (!targetPath) return null;
   const activeTargetPath = targetPath;
+  const existingAccess = shares
+    .filter((share) => !share.disabledAt)
+    .filter((share) => !share.expiresAt || new Date(share.expiresAt).getTime() >= Date.now())
+    .filter((share) => share.rootPath === activeTargetPath);
+  const existingEmails = Array.from(new Set(existingAccess.flatMap((share) => share.allowedEmails || [])));
+  const accessNeedle = accessSearch.trim().toLowerCase();
+  const filteredAccess = existingAccess.flatMap((share) => {
+    const allowedEmails = share.allowedEmails || [];
+    const emailsForShare = share.visibility === "PUBLIC" && !allowedEmails.length ? ["Public login-protected"] : allowedEmails;
+    return emailsForShare
+      .filter((email) => !accessNeedle || [email, share.title, share.permission, share.visibility].join(" ").toLowerCase().includes(accessNeedle))
+      .map((email) => ({ share, email }));
+  });
 
   function expiresAt() {
     if (expiry === "never") return null;
@@ -1253,6 +1298,48 @@ function ShareModal({
             <span className="text-sm text-zinc-300">Share name / client</span>
             <input value={name} onChange={(event) => setName(event.target.value)} className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-[#d7ff3f]" />
           </label>
+
+          {existingAccess.length ? (
+            <section className="rounded-2xl border border-white/10 bg-black/20 p-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">Existing Access</p>
+                  <p className="mt-1 text-xs text-zinc-500">Active shares already pointing to this item.</p>
+                </div>
+                {existingEmails.length ? (
+                  <button type="button" onClick={() => setEmails(Array.from(new Set([...emails, ...existingEmails])))} className="rounded-xl border border-[#d7ff3f]/30 px-3 py-2 text-xs font-bold text-[#d7ff3f] hover:bg-[#d7ff3f]/10">
+                    Use existing emails
+                  </button>
+                ) : null}
+              </div>
+              <label className="mt-3 flex items-center gap-2 rounded-xl border border-white/10 bg-[#08090d] px-3 py-2">
+                <Search className="h-4 w-4 text-zinc-500" />
+                <input value={accessSearch} onChange={(event) => setAccessSearch(event.target.value)} placeholder="Search existing access..." className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-600" />
+              </label>
+              <div className="mt-3 max-h-40 overflow-auto rounded-xl border border-white/10">
+                {filteredAccess.length ? filteredAccess.map(({ share, email }) => (
+                  <div key={`${share.token}-${email}`} className="flex items-center justify-between gap-3 border-b border-white/10 px-3 py-2 last:border-b-0">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-zinc-100">{email}</p>
+                      <p className="mt-0.5 text-xs text-zinc-500">{share.title} · {share.visibility} · {share.permission} · {share.expiresAt ? formatDate(share.expiresAt) : "Never expires"}</p>
+                    </div>
+                    {email !== "Public login-protected" ? (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!window.confirm(`Remove email ${email} from "${share.title}"?`)) return;
+                          await onUpdateShareEmails(share.token, (share.allowedEmails || []).filter((item) => item !== email));
+                        }}
+                        className="shrink-0 rounded-xl border border-red-300/20 px-2 py-1 text-xs font-semibold text-red-200 hover:bg-red-300/10"
+                      >
+                        Remove email
+                      </button>
+                    ) : null}
+                  </div>
+                )) : <p className="p-3 text-sm text-zinc-500">No matching existing access.</p>}
+              </div>
+            </section>
+          ) : null}
 
           <div>
             <p className="text-sm text-zinc-300">Permission</p>

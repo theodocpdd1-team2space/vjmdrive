@@ -1,16 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { Loader2, Mail, RotateCw, Save } from "lucide-react";
+import { Loader2, Mail, Palette, RotateCw, Save, Server, Type } from "lucide-react";
+import { AdminShell } from "@/components/layout/admin-shell";
 import type { DriveSettings } from "@/lib/settings";
 
 export function AdminSettingsClient({
   initialSettings,
   emailStatus,
+  systemInfo,
 }: {
   initialSettings: DriveSettings;
   emailStatus: { from: string; appUrl: string; resendApiKey: string };
+  systemInfo: {
+    assetRoot: string;
+    cacheRoot: string;
+    previewRoot: string;
+    thumbnailRoot: string;
+    downloadBaseUrl: string;
+  };
 }) {
   const [settings, setSettings] = useState(initialSettings);
   const [to, setTo] = useState("");
@@ -22,7 +30,7 @@ export function AdminSettingsClient({
     const res = await fetch("/api/admin/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ previewCache: settings.previewCache }),
+      body: JSON.stringify(settings),
     });
     const data = await res.json().catch(() => ({}));
     setLoading(false);
@@ -55,16 +63,76 @@ export function AdminSettingsClient({
   }
 
   return (
-    <main className="min-h-screen bg-[#08090d] p-4 text-zinc-100 md:p-6">
+    <AdminShell title="Settings" subtitle="System, branding, email, storage, and preview cache settings.">
       <div className="mx-auto max-w-5xl space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-[#d7ff3f]">Admin</p>
-            <h1 className="text-2xl font-semibold">Settings</h1>
-          </div>
-          <Link href="/admin" className="rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10">Back to admin</Link>
-        </div>
         {notice ? <p className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm">{notice}</p> : null}
+
+        <section className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="flex items-center gap-2">
+              <Palette className="h-5 w-5 text-[#d7ff3f]" />
+              <h2 className="font-semibold">Appearance</h2>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {(["dark", "light", "system"] as const).map((theme) => (
+                <button
+                  key={theme}
+                  onClick={() => setSettings({ ...settings, appearance: { theme } })}
+                  className={`rounded-2xl border px-3 py-3 text-sm font-bold capitalize ${settings.appearance.theme === theme ? "border-[#d7ff3f] bg-[#d7ff3f]/10 text-[#d7ff3f]" : "border-white/10 text-zinc-300 hover:bg-white/10"}`}
+                >
+                  {theme}
+                </button>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-zinc-500">Dark remains the default. Light/system are stored and ready for global theme rollout.</p>
+          </div>
+
+          <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="flex items-center gap-2">
+              <Type className="h-5 w-5 text-[#d7ff3f]" />
+              <h2 className="font-semibold">Language</h2>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {[
+                ["en", "English"],
+                ["id", "Indonesian"],
+              ].map(([locale, label]) => (
+                <button
+                  key={locale}
+                  onClick={() => setSettings({ ...settings, language: { locale: locale as DriveSettings["language"]["locale"] } })}
+                  className={`rounded-2xl border px-3 py-3 text-sm font-bold ${settings.language.locale === locale ? "border-[#d7ff3f] bg-[#d7ff3f]/10 text-[#d7ff3f]" : "border-white/10 text-zinc-300 hover:bg-white/10"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+          <div className="flex items-center gap-2">
+            <Server className="h-5 w-5 text-[#d7ff3f]" />
+            <h2 className="font-semibold">Brand & Storage</h2>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <label className="block text-sm text-zinc-300">
+              App name
+              <input value={settings.brand.appName} onChange={(event) => setSettings({ ...settings, brand: { ...settings.brand, appName: event.target.value } })} className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 outline-none focus:border-[#d7ff3f]" />
+            </label>
+            <label className="block text-sm text-zinc-300">
+              Label
+              <input value={settings.brand.label} onChange={(event) => setSettings({ ...settings, brand: { ...settings.brand, label: event.target.value } })} className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 outline-none focus:border-[#d7ff3f]" />
+            </label>
+            <Readonly label="ASSET_ROOT" value={systemInfo.assetRoot} />
+            <Readonly label="CACHE_ROOT" value={systemInfo.cacheRoot} />
+            <Readonly label="PREVIEW_ROOT" value={systemInfo.previewRoot} />
+            <Readonly label="THUMBNAIL_ROOT" value={systemInfo.thumbnailRoot} />
+            <label className="block text-sm text-zinc-300 md:col-span-2">
+              DOWNLOAD_BASE_URL
+              <input value={settings.storage.downloadBaseUrl || systemInfo.downloadBaseUrl} onChange={(event) => setSettings({ ...settings, storage: { ...settings.storage, downloadBaseUrl: event.target.value } })} placeholder="optional direct download base URL" className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 outline-none focus:border-[#d7ff3f]" />
+            </label>
+          </div>
+        </section>
 
         <section className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
           <div className="flex items-center gap-2">
@@ -132,7 +200,7 @@ export function AdminSettingsClient({
           </div>
         </section>
       </div>
-    </main>
+    </AdminShell>
   );
 }
 

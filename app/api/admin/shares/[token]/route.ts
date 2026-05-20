@@ -103,6 +103,18 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/admin/shares/[
     patch.permission = body.permission;
   }
 
+  if (typeof body?.title === "string") {
+    const title = body.title.trim();
+    if (title) {
+      patch.title = title;
+      patch.name = title;
+    }
+  }
+
+  if (typeof body?.note === "string") {
+    patch.note = body.note.slice(0, 1000);
+  }
+
   if (typeof body?.expiresAt === "string") {
     patch.expiresAt = body.expiresAt.trim() || null;
   }

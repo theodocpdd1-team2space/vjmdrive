@@ -25,15 +25,16 @@ import {
   X,
 } from "lucide-react";
 import { EmailChipsInput } from "@/components/common/email-chips-input";
-import { formatBytes } from "@/components/drive/drive-ui";
-
-type UserItem = {
-  name: string;
-  path: string;
-  type: string;
-  size: string | null;
-  bytes: number;
-};
+import {
+  FileThumbnail,
+  formatBytes,
+  PreviewModal,
+  PreviewStatusBadge,
+  type DriveItem,
+  type ViewMode,
+  ViewToggle,
+  typeLabel,
+} from "@/components/drive/drive-ui";
 
 type ShareResult = {
   url: string;
@@ -52,7 +53,7 @@ const navItems = [
 ];
 
 export function UserDriveClient() {
-  const [items, setItems] = useState<UserItem[]>([]);
+  const [items, setItems] = useState<DriveItem[]>([]);
   const [path, setPath] = useState("");
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -60,8 +61,10 @@ export function UserDriveClient() {
   const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [shareTarget, setShareTarget] = useState<UserItem | null>(null);
+  const [shareTarget, setShareTarget] = useState<DriveItem | null>(null);
   const [shareResult, setShareResult] = useState<ShareResult | null>(null);
+  const [previewItem, setPreviewItem] = useState<DriveItem | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
 
   const load = useCallback(async (nextPath: string) => {
     setLoading(true);
@@ -334,6 +337,13 @@ export function UserDriveClient() {
             ) : null}
 
             <section className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/20">
+              <div className="flex flex-col gap-3 border-b border-white/10 p-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-black text-white">Files</p>
+                  <p className="mt-1 text-xs text-zinc-500">Open, preview, download, or share your own files.</p>
+                </div>
+                <ViewToggle value={viewMode} onChange={setViewMode} />
+              </div>
               {loading ? (
                 <div className="flex h-72 items-center justify-center gap-2 text-zinc-400">
                   <Loader2 className="h-5 w-5 animate-spin text-[#d7ff3f]" />
@@ -354,47 +364,57 @@ export function UserDriveClient() {
               ) : null}
 
               {!loading && filteredItems.length > 0 ? (
-                <div className="divide-y divide-white/10">
+                <div className={viewMode === "grid" ? "grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3" : "divide-y divide-white/10"}>
                   {filteredItems.map((item) => (
                     <div
                       key={item.path}
-                      className="grid w-full grid-cols-[42px_minmax(0,1fr)_92px] items-center gap-3 px-4 py-3 text-left transition hover:bg-white/[0.04] md:grid-cols-[42px_minmax(0,1fr)_140px_140px_120px]"
+                      className={viewMode === "grid"
+                        ? "rounded-3xl border border-white/10 bg-black/20 p-3 transition hover:bg-white/[0.05]"
+                        : "grid w-full grid-cols-[42px_minmax(0,1fr)] items-center gap-3 px-4 py-3 text-left transition hover:bg-white/[0.04] md:grid-cols-[42px_minmax(0,1fr)_120px_120px_250px]"}
                     >
-                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
-                        {item.type === "folder" ? (
-                          <Folder className="h-5 w-5 text-[#d7ff3f]" />
-                        ) : (
-                          <File className="h-5 w-5 text-zinc-400" />
-                        )}
-                      </div>
+                      <FileThumbnail item={item} size={viewMode === "grid" ? "grid" : "row"} />
 
                       <div className="min-w-0">
                         <p className="truncate text-sm font-bold text-white">{item.name}</p>
-                        <p className="mt-1 text-xs text-zinc-500">{item.type === "folder" ? "Folder" : "File"}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                          <span>{typeLabel(item)}</span>
+                          <PreviewStatusBadge item={item} />
+                        </div>
                       </div>
 
-                      <span className="text-right text-xs text-zinc-500 md:text-left">
+                      <span className={viewMode === "grid" ? "mt-3 block text-xs text-zinc-500" : "hidden text-xs text-zinc-500 md:block"}>
                         {item.size || formatBytes(item.bytes || 0)}
                       </span>
 
-                      <span className="hidden text-right text-xs text-zinc-600 md:block">
-                        {item.type === "folder" ? (
-                          <button onClick={() => void load(item.path)} className="rounded-xl border border-white/10 px-3 py-2 font-bold text-zinc-300 hover:bg-white/10 hover:text-white">Open</button>
-                        ) : (
-                          "Stored file"
-                        )}
+                      <span className={viewMode === "grid" ? "mt-3 block text-xs text-zinc-600" : "hidden text-xs text-zinc-600 md:block"}>
+                        {new Date(item.modified).toLocaleString("id-ID")}
                       </span>
 
-                      <button
-                        onClick={() => {
-                          setShareTarget(item);
-                          setShareResult(null);
-                        }}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
-                      >
-                        <Share2 className="h-4 w-4" />
-                        Share
-                      </button>
+                      <div className={viewMode === "grid" ? "mt-4 flex flex-wrap gap-2" : "col-span-2 flex flex-wrap gap-2 md:col-span-1 md:justify-end"}>
+                        <button
+                          onClick={() => (item.type === "folder" ? void load(item.path) : setPreviewItem(item))}
+                          className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
+                        >
+                          {item.type === "folder" ? <Folder className="h-4 w-4" /> : <File className="h-4 w-4" />}
+                          {item.type === "folder" ? "Open" : "Preview"}
+                        </button>
+                        {item.directDownloadUrl ? (
+                          <a href={item.directDownloadUrl} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white">
+                            <Download className="h-4 w-4" />
+                            Download
+                          </a>
+                        ) : null}
+                        <button
+                          onClick={() => {
+                            setShareTarget(item);
+                            setShareResult(null);
+                          }}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#d7ff3f] px-3 py-2 text-xs font-black text-black hover:bg-[#c8ef34]"
+                        >
+                          <Share2 className="h-4 w-4" />
+                          Share
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -413,6 +433,23 @@ export function UserDriveClient() {
         }}
         onCreated={(result) => setShareResult(result)}
         onNotice={setNotice}
+      />
+
+      <PreviewModal
+        item={previewItem}
+        open={previewItem !== null}
+        canDownload
+        onClose={() => setPreviewItem(null)}
+        onCopy={(text) => {
+          void navigator.clipboard.writeText(text).catch(() => undefined);
+          setNotice("Link copied.");
+        }}
+        onShare={(itemPath) => {
+          const item = items.find((candidate) => candidate.path === itemPath) || null;
+          setPreviewItem(null);
+          setShareTarget(item);
+          setShareResult(null);
+        }}
       />
 
       {uploading ? (
@@ -440,7 +477,7 @@ function UserShareModal({
   onCreated,
   onNotice,
 }: {
-  item: UserItem | null;
+  item: DriveItem | null;
   result: ShareResult | null;
   onClose: () => void;
   onCreated: (result: ShareResult) => void;

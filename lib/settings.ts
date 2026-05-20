@@ -4,6 +4,19 @@ import { getAppUrl } from "./auth";
 import { getCacheRoot } from "./preview-cache";
 
 export type DriveSettings = {
+  appearance: {
+    theme: "dark" | "light" | "system";
+  };
+  language: {
+    locale: "en" | "id";
+  };
+  brand: {
+    appName: string;
+    label: string;
+  };
+  storage: {
+    downloadBaseUrl: string;
+  };
   previewCache: {
     autoEnabled: boolean;
     intervalHours: 1 | 3 | 6 | 12 | 24;
@@ -26,6 +39,19 @@ function settingsPath() {
 
 export function defaultSettings(): DriveSettings {
   return {
+    appearance: {
+      theme: "dark",
+    },
+    language: {
+      locale: "en",
+    },
+    brand: {
+      appName: "driveOne",
+      label: "by VJMRTIM",
+    },
+    storage: {
+      downloadBaseUrl: process.env.DOWNLOAD_BASE_URL || "",
+    },
     previewCache: {
       autoEnabled: false,
       intervalHours: 6,
@@ -55,6 +81,10 @@ export async function readSettings(): Promise<DriveSettings> {
   return {
     ...defaultSettings(),
     ...parsed,
+    appearance: { ...defaultSettings().appearance, ...parsed.appearance },
+    language: { ...defaultSettings().language, ...parsed.language },
+    brand: { ...defaultSettings().brand, ...parsed.brand },
+    storage: { ...defaultSettings().storage, ...parsed.storage },
     previewCache: { ...defaultSettings().previewCache, ...parsed.previewCache },
     email: { ...defaultSettings().email, ...parsed.email },
   };

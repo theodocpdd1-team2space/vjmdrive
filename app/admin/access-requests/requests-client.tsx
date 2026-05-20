@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Check, Loader2, Search, ShieldAlert, X } from "lucide-react";
+import { Check, Loader2, Search, X } from "lucide-react";
+import { AdminShell } from "@/components/layout/admin-shell";
 import type { ShareAccessRequest, ShareAccessRequestStatus } from "@/lib/share-access-requests";
 
 type Filter = "ALL" | ShareAccessRequestStatus;
@@ -67,23 +67,13 @@ export function AccessRequestsClient({ initialRequests }: { initialRequests: Sha
   };
 
   return (
-    <main className="min-h-screen bg-[#08090d] p-4 text-zinc-100 md:p-6">
+    <AdminShell title="Access Requests" subtitle="Approve or reject private share access requests.">
       <div className="mx-auto max-w-7xl space-y-5">
         <header className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/[0.035] p-4 shadow-2xl shadow-black/20 md:flex-row md:items-center md:justify-between">
           <div>
-            <Link href="/admin" className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-400 hover:text-white">
-              <ArrowLeft className="h-4 w-4" />
-              Admin
-            </Link>
-            <div className="mt-4 flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#d7ff3f] text-black">
-                <ShieldAlert className="h-6 w-6" />
-              </div>
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.24em] text-[#d7ff3f]">driveOne by VJMRTIM</p>
-                <h1 className="text-2xl font-black text-white">Access Requests</h1>
-              </div>
-            </div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#d7ff3f]">Private access queue</p>
+            <h2 className="mt-2 text-2xl font-black text-white">Access Requests</h2>
+            <p className="mt-2 text-sm text-zinc-500">Approved requests immediately add the requester email to the share whitelist.</p>
           </div>
           <div className="grid grid-cols-4 gap-2 text-center text-xs md:min-w-[420px]">
             {[
@@ -159,6 +149,6 @@ export function AccessRequestsClient({ initialRequests }: { initialRequests: Sha
           </div>
         </section>
       </div>
-    </main>
+    </AdminShell>
   );
 }

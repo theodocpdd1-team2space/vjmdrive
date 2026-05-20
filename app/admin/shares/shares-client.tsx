@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   BadgeCheck,
   Copy,
   ExternalLink,
   Eye,
+  Edit3,
   FileKey,
   Filter,
   Link2,
@@ -19,6 +20,7 @@ import {
   Search,
   Shield,
   Trash2,
+  X,
 } from "lucide-react";
 import { EmailChipsInput } from "@/components/common/email-chips-input";
 import type { ShareLink } from "@/lib/share-db";
@@ -82,6 +84,7 @@ export function AdminSharesClient({
   const [filter, setFilter] = useState<FilterMode>("ALL");
   const [updatingToken, setUpdatingToken] = useState<string | null>(null);
   const [editors, setEditors] = useState<Record<string, EmailEditorState>>({});
+  const [editShare, setEditShare] = useState<ShareLink | null>(null);
 
   function getEditor(share: ShareLink) {
     return (
@@ -124,8 +127,9 @@ export function AdminSharesClient({
     setUpdatingToken(null);
 
     if (!res.ok || !data.ok) {
-      setNotice(data.message || "Update failed.");
-      return;
+      const message = data.message || "Update failed.";
+      setNotice(message);
+      throw new Error(message);
     }
 
     setNotice(successMessage);
@@ -139,9 +143,10 @@ export function AdminSharesClient({
     const res = await fetch(`/api/admin/shares/${token}`, {
       method: "DELETE",
     });
+    const data = await res.json().catch(() => ({}));
 
     setUpdatingToken(null);
-    setNotice(res.ok ? "Share disabled." : "Failed to disable share.");
+    setNotice(res.ok && data.ok ? "Share disabled." : data.message || "Failed to disable share.");
 
     await refresh();
   }
@@ -159,7 +164,8 @@ export function AdminSharesClient({
     });
 
     setUpdatingToken(null);
-    setNotice(res.ok ? `Invite sent to ${email}.` : "Invite failed.");
+    const data = await res.json().catch(() => ({}));
+    setNotice(res.ok && data.ok ? `Invite sent to ${email}.` : data.message || "Invite failed.");
   }
 
   async function copy(text: string) {
@@ -363,6 +369,15 @@ export function AdminSharesClient({
 
                         <div className="flex flex-wrap gap-2">
                           <button
+                            onClick={() => setEditShare(share)}
+                            disabled={isUpdating || Boolean(share.disabledAt)}
+                            className="inline-flex items-center gap-2 rounded-2xl border border-white/10 px-3 py-2 text-sm font-bold text-zinc-300 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                            Edit Access
+                          </button>
+
+                          <button
                             onClick={() => void patchShare(share.token, { pinned: !share.pinned }, share.pinned ? "Share unpinned." : "Share pinned.")}
                             disabled={isUpdating}
                             className={`inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm font-bold transition disabled:opacity-50 ${
@@ -536,7 +551,7 @@ export function AdminSharesClient({
                           className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-300/20 bg-red-500/10 px-3 py-3 text-sm font-black text-red-100 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           <Trash2 className="h-4 w-4" />
-                          {share.disabledAt ? "Already Disabled" : "Disable Share"}
+                          {share.disabledAt ? "Already Disabled" : "Disable link"}
                         </button>
                       </div>
                     </aside>
@@ -559,7 +574,160 @@ export function AdminSharesClient({
           </div>
         </div>
       </section>
+      <EditAccessModal
+        share={editShare}
+        updating={Boolean(editShare && updatingToken === editShare.token)}
+        onClose={() => setEditShare(null)}
+        onSave={async (share, patch, newEmails) => {
+          await patchShare(share.token, patch, "Access updated.");
+          for (const email of newEmails) {
+            await resendInvite(share.token, email);
+          }
+          setEditShare(null);
+        }}
+      />
     </main>
+  );
+}
+
+function EditAccessModal({
+  share,
+  updating,
+  onClose,
+  onSave,
+}: {
+  share: ShareLink | null;
+  updating: boolean;
+  onClose: () => void;
+  onSave: (share: ShareLink, patch: Record<string, unknown>, newEmails: string[]) => Promise<void>;
+}) {
+  const [title, setTitle] = useState("");
+  const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE_EMAILS">("PUBLIC");
+  const [permission, setPermission] = useState<ShareLink["permission"]>("DOWNLOAD");
+  const [emails, setEmails] = useState<string[]>([]);
+  const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!share) return;
+    setTitle(share.title || share.name);
+    setVisibility(share.visibility);
+    setPermission(share.permission);
+    setEmails(share.allowedEmails || []);
+    setSearch("");
+    setError("");
+  }, [share]);
+
+  if (!share) return null;
+  const activeShare = share;
+
+  const keyword = search.trim().toLowerCase();
+  const filteredEmails = emails.filter((email) => {
+    if (!keyword) return true;
+    return [email, title, permission, visibility].join(" ").toLowerCase().includes(keyword);
+  });
+  const oldEmails = activeShare.allowedEmails || [];
+  const savedEmails = uniqueEmails(emails);
+  const newEmails = savedEmails.filter((email) => !oldEmails.includes(email));
+  const removedEmails = oldEmails.filter((email) => !savedEmails.includes(email));
+
+  async function submit() {
+    setError("");
+    try {
+      await onSave(
+        activeShare,
+        {
+          title,
+          visibility,
+          permission,
+          allowedEmails: savedEmails,
+        },
+        newEmails
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Save failed.");
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4">
+      <div className="max-h-[92vh] w-full overflow-auto rounded-t-3xl border border-white/10 bg-[#101217] p-4 shadow-2xl md:max-w-2xl md:rounded-3xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#d7ff3f]">Edit Access</p>
+            <h2 className="mt-2 text-xl font-black text-white">{share.title || share.name}</h2>
+            <p className="mt-1 truncate text-sm text-zinc-500">{share.rootPath || "PublicShare"}</p>
+          </div>
+          <button onClick={onClose} disabled={updating} className="rounded-xl p-2 text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-50" aria-label="Close edit access">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-4">
+          <label className="block">
+            <span className="text-sm font-semibold text-zinc-300">Share title</span>
+            <input value={title} onChange={(event) => setTitle(event.target.value)} disabled={updating} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm text-white outline-none focus:border-[#d7ff3f]/50 disabled:opacity-50" />
+          </label>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm font-semibold text-zinc-300">
+              Visibility
+              <select value={visibility} onChange={(event) => setVisibility(event.target.value as typeof visibility)} disabled={updating} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm text-white outline-none disabled:opacity-50">
+                <option value="PUBLIC">PUBLIC - login required</option>
+                <option value="PRIVATE_EMAILS">PRIVATE_EMAILS</option>
+              </select>
+            </label>
+            <label className="block text-sm font-semibold text-zinc-300">
+              Permission
+              <select value={permission} onChange={(event) => setPermission(event.target.value as ShareLink["permission"])} disabled={updating} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm text-white outline-none disabled:opacity-50">
+                <option value="VIEW_ONLY">VIEW_ONLY</option>
+                <option value="DOWNLOAD">DOWNLOAD</option>
+                <option value="UPLOAD">UPLOAD</option>
+                <option value="FULL">FULL</option>
+              </select>
+            </label>
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-sm font-semibold text-zinc-300">Allowed emails</span>
+              {removedEmails.length ? <span className="text-xs text-amber-300">{removedEmails.length} email(s) will lose access</span> : null}
+            </div>
+            <EmailChipsInput value={emails} onChange={setEmails} placeholder="Add email..." disabled={updating} />
+          </div>
+
+          <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+            <Search className="h-4 w-4 shrink-0 text-zinc-500" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search existing access..." className="w-full bg-transparent text-sm text-white outline-none placeholder:text-zinc-600" />
+          </label>
+
+          <div className="max-h-48 overflow-auto rounded-2xl border border-white/10 bg-black/20">
+            {filteredEmails.length ? filteredEmails.map((email) => (
+              <div key={email} className="flex items-center justify-between gap-3 border-b border-white/10 px-3 py-2 last:border-b-0">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-white">{email}</p>
+                  <p className="text-xs text-zinc-500">{visibility} · {permission}</p>
+                </div>
+                <button onClick={() => setEmails((current) => current.filter((item) => item !== email))} disabled={updating} className="rounded-xl border border-red-300/20 px-2 py-1 text-xs font-semibold text-red-200 hover:bg-red-300/10 disabled:opacity-40">
+                  Remove email
+                </button>
+              </div>
+            )) : <p className="p-4 text-sm text-zinc-500">No matching access entries.</p>}
+          </div>
+
+          {newEmails.length ? <p className="text-xs text-[#d7ff3f]">New invites: {newEmails.join(", ")}</p> : null}
+          {error ? <p className="rounded-2xl border border-red-300/20 bg-red-300/10 px-3 py-2 text-sm text-red-100">{error}</p> : null}
+
+          <div className="flex flex-wrap justify-end gap-2">
+            <button onClick={onClose} disabled={updating} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:opacity-50">Cancel</button>
+            <button onClick={() => void submit()} disabled={updating || !title.trim()} className="inline-flex items-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60">
+              {updating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Save Access
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

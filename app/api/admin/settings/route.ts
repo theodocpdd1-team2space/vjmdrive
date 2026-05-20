@@ -23,6 +23,27 @@ export async function PATCH(req: Request) {
   if (!(await isAdmin())) return NextResponse.json({ ok: false }, { status: 401 });
   const body = await req.json().catch(() => null);
   const settings = await readSettings();
+
+  if (body?.appearance?.theme === "dark" || body?.appearance?.theme === "light" || body?.appearance?.theme === "system") {
+    settings.appearance.theme = body.appearance.theme;
+  }
+
+  if (body?.language?.locale === "en" || body?.language?.locale === "id") {
+    settings.language.locale = body.language.locale;
+  }
+
+  if (typeof body?.brand?.appName === "string") {
+    settings.brand.appName = body.brand.appName.trim() || "driveOne";
+  }
+
+  if (typeof body?.brand?.label === "string") {
+    settings.brand.label = body.brand.label.trim() || "by VJMRTIM";
+  }
+
+  if (typeof body?.storage?.downloadBaseUrl === "string") {
+    settings.storage.downloadBaseUrl = body.storage.downloadBaseUrl.trim();
+  }
+
   const preview = body?.previewCache || {};
   const nextInterval = Number(preview.intervalHours);
   const intervalHours = ([1, 3, 6, 12, 24] as const).includes(nextInterval as 1 | 3 | 6 | 12 | 24)

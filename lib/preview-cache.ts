@@ -141,7 +141,7 @@ export async function getPreviewMetadata(
     };
   }
 
-  if (["jpg", "jpeg", "png", "webp", "gif", "pdf", "txt", "json", "md", "log"].includes(extension)) {
+  if (["jpg", "jpeg", "png", "webp", "gif", "svg", "pdf", "txt", "json", "md", "xml", "html", "css", "js", "ts", "tsx", "jsx", "py", "php", "sql", "log", "csv", "mp3", "wav", "aac", "m4a", "flac", "ogg"].includes(extension)) {
     return {
       previewStatus: "native" as PreviewStatus,
       previewUrl: originalUrl,

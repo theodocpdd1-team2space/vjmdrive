@@ -71,6 +71,23 @@ export async function moveItems(paths: string[], targetFolder: string) {
   return moved;
 }
 
+async function moveAcrossDevicesSafe(sourcePath: string, destinationPath: string) {
+  try {
+    await fs.rename(sourcePath, destinationPath);
+  } catch (caught) {
+    const error = caught as NodeJS.ErrnoException;
+    if (error.code !== "EXDEV") throw caught;
+
+    await fs.cp(sourcePath, destinationPath, {
+      recursive: true,
+      errorOnExist: true,
+      force: false,
+      preserveTimestamps: true,
+    });
+    await fs.rm(sourcePath, { recursive: true, force: false });
+  }
+}
+
 export async function softDelete(paths: string[]) {
   const date = new Date().toISOString().slice(0, 10);
   const trashRoot = path.join(/*turbopackIgnore: true*/ getCacheRoot(), "trash", date);
@@ -81,7 +98,7 @@ export async function softDelete(paths: string[]) {
     const destination = path.join(/*turbopackIgnore: true*/ trashRoot, source.relativePath);
     await fs.mkdir(path.dirname(destination), { recursive: true });
     const uniqueDestination = await ensureUniquePath(path.dirname(destination), path.basename(destination));
-    await fs.rename(source.absolutePath, uniqueDestination);
+    await moveAcrossDevicesSafe(source.absolutePath, uniqueDestination);
     deleted.push(source.relativePath);
   }
 

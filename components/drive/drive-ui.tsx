@@ -8,6 +8,7 @@ import {
   Download,
   File,
   FileArchive,
+  FileAudio,
   FileImage,
   FileText,
   FileVideo,
@@ -23,7 +24,7 @@ import {
   X,
 } from "lucide-react";
 
-export type DriveItemType = "folder" | "image" | "video" | "pdf" | "text" | "archive" | "file";
+export type DriveItemType = "folder" | "image" | "video" | "audio" | "pdf" | "document" | "spreadsheet" | "presentation" | "text" | "archive" | "design" | "file";
 export type PreviewStatus = "native" | "ready" | "missing" | "unsupported" | "queued" | "processing" | "failed";
 export type ViewMode = "grid" | "list" | "compact";
 
@@ -63,6 +64,11 @@ export function formatDate(value: string) {
 export function typeLabel(item: DriveItem) {
   if (item.type === "folder") return "Folder";
   if (item.type === "pdf") return "PDF";
+  if (item.type === "document") return "Document";
+  if (item.type === "spreadsheet") return "Spreadsheet";
+  if (item.type === "presentation") return "Presentation";
+  if (item.type === "audio") return "Audio";
+  if (item.type === "design") return "Design";
   if (item.extension) return item.extension.toUpperCase();
   return "File";
 }
@@ -99,9 +105,10 @@ export function previewBadgeClass(status: PreviewStatus) {
 export function DriveIcon({ type, className }: { type: DriveItemType; className: string }) {
   if (type === "folder") return <Folder className={className} />;
   if (type === "video") return <FileVideo className={className} />;
+  if (type === "audio") return <FileAudio className={className} />;
   if (type === "image") return <FileImage className={className} />;
   if (type === "archive") return <FileArchive className={className} />;
-  if (type === "pdf" || type === "text") return <FileText className={className} />;
+  if (type === "pdf" || type === "text" || type === "document" || type === "spreadsheet" || type === "presentation") return <FileText className={className} />;
   return <File className={className} />;
 }
 
@@ -408,6 +415,14 @@ export function PreviewModal({
                 )
               ) : null}
 
+              {item.type === "audio" ? (
+                <div className="mx-auto flex w-full max-w-xl flex-col items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] p-8 text-center">
+                  <FileAudio className="h-12 w-12 text-[#d7ff3f]" />
+                  <p className="mt-4 text-sm font-semibold text-white">{item.name}</p>
+                  <audio src={item.originalUrl} controls preload="metadata" className="mt-5 w-full" />
+                </div>
+              ) : null}
+
               {item.type === "pdf" ? (
                 <iframe src={item.originalUrl} title={item.name} className="h-[calc(100vh-10rem)] w-full max-w-6xl rounded-lg bg-white" />
               ) : null}
@@ -420,11 +435,11 @@ export function PreviewModal({
                 </div>
               ) : null}
 
-              {!["image", "video", "pdf", "text"].includes(item.type) ? (
+              {!["image", "video", "audio", "pdf", "text"].includes(item.type) ? (
                 <div className="mx-auto flex max-w-md flex-col items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] p-8 text-center">
                   <DriveIcon type={item.type} className="h-12 w-12 text-zinc-500" />
-                  <p className="mt-4 text-sm font-semibold text-white">Preview not available</p>
-                  <p className="mt-2 text-sm text-zinc-500">Download the original file to open it locally.</p>
+                  <p className="mt-4 text-sm font-semibold text-white">Preview not available for {typeLabel(item)}</p>
+                  <p className="mt-2 text-sm text-zinc-500">This file type may need a desktop app or browser plugin. Download the original file to open it locally.</p>
                 </div>
               ) : null}
             </div>
