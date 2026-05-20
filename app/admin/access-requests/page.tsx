@@ -9,9 +9,8 @@ export const dynamic = "force-dynamic";
 export default async function AdminAccessRequestsPage() {
   const user = await getCurrentUser();
 
-  if (!user || user.role !== "ADMIN") {
-    redirect("/admin");
-  }
+  if (!user) redirect("/login");
+  if (user.role !== "ADMIN") redirect("/dashboard");
 
   const requests = await readShareAccessRequests();
 
