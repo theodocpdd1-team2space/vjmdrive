@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
   BarChart3,
@@ -90,8 +90,12 @@ type QueueItem = {
 type ShareLink = {
   token: string;
   name: string;
+  title?: string;
   rootPath: string;
   canDownload: boolean;
+  visibility?: "PUBLIC" | "PRIVATE_EMAILS";
+  allowedEmails?: string[];
+  permission?: "VIEW_ONLY" | "DOWNLOAD" | "UPLOAD" | "FULL";
   expiresAt: string | null;
   createdAt: string;
   note?: string;
@@ -163,7 +167,6 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function HomePage() {
-  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [authState, setAuthState] = useState<"checking" | "guest" | "admin">("checking");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -182,6 +185,17 @@ export default function HomePage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [previewModalItem, setPreviewModalItem] = useState<DriveItem | null>(null);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [uploadSelection, setUploadSelection] = useState<globalThis.File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [folderModalOpen, setFolderModalOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [renameTarget, setRenameTarget] = useState<DriveItem | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [moveModalOpen, setMoveModalOpen] = useState(false);
+  const [moveTargetFolder, setMoveTargetFolder] = useState("");
+  const [deleteTargets, setDeleteTargets] = useState<string[] | null>(null);
   const [shareTargetPath, setShareTargetPath] = useState<string | null>(null);
   const [shareResult, setShareResult] = useState<{ url: string; token: string } | null>(null);
   const [appOrigin, setAppOrigin] = useState("");
@@ -382,53 +396,126 @@ export default function HomePage() {
     return data;
   }
 
-  async function createFolderAction() {
-    const name = window.prompt("Folder name");
-    if (!name) return;
-    await adminJson("/api/admin/folder", "POST", { path: currentPath, name });
-    setNotice("Folder created.");
-    await loadDrive(currentPath);
+  function openCreateFolderModal() {
+    setNewFolderName("");
+    setFolderModalOpen(true);
   }
 
-  async function uploadFiles(files: FileList | null) {
-    if (!files?.length) return;
+  async function createFolderAction() {
+    const name = newFolderName.trim();
+    if (!name) return;
+
+    try {
+      await adminJson("/api/admin/folder", "POST", { path: currentPath, name });
+      setNotice("Folder created.");
+      setFolderModalOpen(false);
+      setNewFolderName("");
+      await loadDrive(currentPath);
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : "Folder failed.");
+    }
+  }
+
+  async function uploadFiles(files: globalThis.File[]) {
+    if (!files.length || uploading) return;
     const form = new FormData();
     form.set("path", currentPath);
-    Array.from(files).forEach((file) => form.append("files", file));
-    const res = await fetch("/api/admin/upload", { method: "POST", body: form });
-    if (!res.ok) setNotice("Upload failed.");
-    else setNotice("Upload complete.");
-    await loadDrive(currentPath);
-    if (uploadInputRef.current) uploadInputRef.current.value = "";
+    files.forEach((file) => form.append("files", file));
+    setUploading(true);
+    setUploadProgress(0);
+
+    try {
+      const data = await new Promise<{ ok?: boolean; uploaded?: string[]; message?: string }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/admin/upload");
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) setUploadProgress(Math.round((event.loaded / event.total) * 100));
+        };
+        xhr.onerror = () => reject(new Error("Upload failed."));
+        xhr.onload = () => {
+          const payload = JSON.parse(xhr.responseText || "{}");
+          if (xhr.status >= 400 || !payload.ok) reject(new Error(payload.message || "Upload failed."));
+          else resolve(payload);
+        };
+        xhr.send(form);
+      });
+      setUploadProgress(100);
+      setNotice(`Uploaded ${data.uploaded?.length ?? files.length} file(s).`);
+      setUploadSelection([]);
+      setUploadModalOpen(false);
+      await loadDrive(currentPath);
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
   }
 
-  async function renameAction(item: DriveItem) {
-    const newName = window.prompt("New name", item.name);
-    if (!newName || newName === item.name) return;
-    await adminJson("/api/admin/rename", "POST", { path: item.path, newName });
-    setNotice("Renamed.");
-    await loadDrive(currentPath);
+  function openRenameModal(item: DriveItem) {
+    setRenameTarget(item);
+    setRenameValue(item.name);
+  }
+
+  async function renameAction() {
+    if (!renameTarget) return;
+    const newName = renameValue.trim();
+    if (!newName || newName === renameTarget.name) {
+      setRenameTarget(null);
+      return;
+    }
+
+    try {
+      await adminJson("/api/admin/rename", "POST", { path: renameTarget.path, newName });
+      setNotice("Renamed.");
+      setRenameTarget(null);
+      await loadDrive(currentPath);
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : "Rename failed.");
+    }
+  }
+
+  function openMoveModal() {
+    if (!selectedPaths.size) return;
+    setMoveTargetFolder(currentPath);
+    setMoveModalOpen(true);
   }
 
   async function moveSelectedAction() {
     const paths = Array.from(selectedPaths);
+    const targetFolder = moveTargetFolder.trim();
     if (!paths.length) return;
-    const targetFolder = window.prompt("Move to folder path, relative to PublicShare", currentPath);
-    if (targetFolder === null) return;
-    await adminJson("/api/admin/move", "POST", { paths, targetFolder });
-    setNotice("Moved.");
-    clearSelection();
-    await loadDrive(currentPath);
+
+    try {
+      await adminJson("/api/admin/move", "POST", { paths, targetFolder });
+      setNotice("Moved.");
+      setMoveModalOpen(false);
+      setMoveTargetFolder("");
+      clearSelection();
+      await loadDrive(currentPath);
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : "Move failed.");
+    }
   }
 
-  async function deleteSelectedAction(paths = Array.from(selectedPaths)) {
+  function openDeleteModal(paths = Array.from(selectedPaths)) {
     if (!paths.length) return;
-    if (!window.confirm("Move selected item(s) to soft trash?")) return;
-    await adminJson("/api/admin/delete", "DELETE", { paths });
-    setNotice("Moved to soft trash.");
-    clearSelection();
-    setSelected(null);
-    await loadDrive(currentPath);
+    setDeleteTargets(paths);
+  }
+
+  async function deleteSelectedAction() {
+    const paths = deleteTargets || [];
+    if (!paths.length) return;
+
+    try {
+      await adminJson("/api/admin/delete", "DELETE", { paths });
+      setNotice("Moved to soft trash.");
+      setDeleteTargets(null);
+      clearSelection();
+      setSelected(null);
+      await loadDrive(currentPath);
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : "Delete failed.");
+    }
   }
 
   function openShareModal(rootPath: string) {
@@ -442,6 +529,9 @@ export default function HomePage() {
     canDownload: boolean;
     expiresAt: string | null;
     note: string;
+    visibility: "PUBLIC" | "PRIVATE_EMAILS";
+    allowedEmails: string[];
+    permission: "VIEW_ONLY" | "DOWNLOAD";
   }) {
     const data = await adminJson("/api/admin/share", "POST", {
       rootPath: input.rootPath,
@@ -449,6 +539,9 @@ export default function HomePage() {
       canDownload: input.canDownload,
       expiresAt: input.expiresAt,
       note: input.note,
+      visibility: input.visibility,
+      allowedEmails: input.allowedEmails,
+      permission: input.permission,
     });
     const url = `${appOrigin || window.location.origin}${data.url}`;
     setShareResult({ url, token: data.token });
@@ -644,7 +737,7 @@ export default function HomePage() {
                   onClear={clearSelection}
                 />
               )}
-              {activeView === "queue" && <QueueView queue={queue} onRefresh={loadQueue} />}
+              {activeView === "queue" && <QueueView queue={queue} onRefresh={loadQueue} onRetry={(path) => void requestPreviewAction([path])} />}
               {activeView === "shares" && (
                 <SharesView
                   shares={shares}
@@ -678,13 +771,13 @@ export default function HomePage() {
                   onToggleSelect={toggleSelect}
                   onOpenFolder={openFolder}
                   onPreview={previewItem}
-                  onCreateFolder={createFolderAction}
-                  onUploadClick={() => uploadInputRef.current?.click()}
-                  onRename={renameAction}
-                  onMove={moveSelectedAction}
+                  onCreateFolder={openCreateFolderModal}
+                  onUploadClick={() => setUploadModalOpen(true)}
+                  onRename={openRenameModal}
+                  onMove={openMoveModal}
                   onDownloadSelected={downloadSelectedAction}
                   onShareSelected={shareSelectedAction}
-                  onDelete={(paths) => void deleteSelectedAction(paths)}
+                  onDelete={openDeleteModal}
                   onShare={openShareModal}
                   onRequestPreview={(paths) => void requestPreviewAction(paths)}
                   onCopy={copyText}
@@ -713,6 +806,7 @@ export default function HomePage() {
         isAdmin
         onClose={() => setPreviewModalItem(null)}
         onCopy={copyText}
+        onShare={openShareModal}
         onRequestPreview={(path) => void requestPreviewAction([path])}
       />
       <ShareModal
@@ -727,12 +821,56 @@ export default function HomePage() {
         onCreate={(input) => void createShareAction(input)}
         onCopy={copyText}
       />
-      <input
-        ref={uploadInputRef}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={(event) => void uploadFiles(event.target.files)}
+      <UploadModal
+        open={uploadModalOpen}
+        files={uploadSelection}
+        uploading={uploading}
+        progress={uploadProgress}
+        onClose={() => {
+          if (!uploading) {
+            setUploadModalOpen(false);
+            setUploadSelection([]);
+          }
+        }}
+        onFilesChange={setUploadSelection}
+        onUpload={() => void uploadFiles(uploadSelection)}
+      />
+      <TextInputModal
+        open={folderModalOpen}
+        title="New Folder"
+        label="Folder name"
+        value={newFolderName}
+        submitLabel="Create Folder"
+        onChange={setNewFolderName}
+        onClose={() => setFolderModalOpen(false)}
+        onSubmit={() => void createFolderAction()}
+      />
+      <TextInputModal
+        open={renameTarget !== null}
+        title="Rename"
+        label="New name"
+        value={renameValue}
+        submitLabel="Rename"
+        onChange={setRenameValue}
+        onClose={() => setRenameTarget(null)}
+        onSubmit={() => void renameAction()}
+      />
+      <MoveModal
+        open={moveModalOpen}
+        count={selectedPaths.size}
+        targetFolder={moveTargetFolder}
+        onChange={setMoveTargetFolder}
+        onClose={() => setMoveModalOpen(false)}
+        onSubmit={() => void moveSelectedAction()}
+      />
+      <ConfirmModal
+        open={deleteTargets !== null}
+        title="Move to soft trash?"
+        body={`${deleteTargets?.length || 0} item(s) will be moved to cache trash. Original paths stay recoverable from the server trash folder.`}
+        confirmLabel="Move to Trash"
+        danger
+        onClose={() => setDeleteTargets(null)}
+        onConfirm={() => void deleteSelectedAction()}
       />
     </main>
   );
@@ -817,7 +955,15 @@ function Dashboard({
   );
 }
 
-function QueueView({ queue, onRefresh }: { queue: QueueItem[]; onRefresh: () => Promise<void> }) {
+function QueueView({
+  queue,
+  onRefresh,
+  onRetry,
+}: {
+  queue: QueueItem[];
+  onRefresh: () => Promise<void>;
+  onRetry: (path: string) => void;
+}) {
   async function processNext() {
     await fetch("/api/admin/preview/process-one", { method: "POST" });
     await onRefresh();
@@ -841,7 +987,14 @@ function QueueView({ queue, onRefresh }: { queue: QueueItem[]; onRefresh: () => 
           <div key={item.id} className="p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="truncate text-sm font-medium text-white">{item.path}</p>
-              <span className={`rounded-lg border px-2 py-1 text-xs ${item.status === "failed" ? badgeClass("warn") : badgeClass("muted")}`}>{item.status}</span>
+              <div className="flex items-center gap-2">
+                <span className={`rounded-lg border px-2 py-1 text-xs ${item.status === "failed" ? badgeClass("warn") : badgeClass("muted")}`}>{item.status}</span>
+                {item.status === "failed" ? (
+                  <button type="button" onClick={() => onRetry(item.path)} className="rounded-lg border border-white/10 px-2 py-1 text-xs text-zinc-200 hover:bg-white/10">
+                    Retry
+                  </button>
+                ) : null}
+              </div>
             </div>
             {item.message ? <p className="mt-2 text-xs text-zinc-500">{item.message}</p> : null}
             <div className="mt-2 flex flex-wrap gap-3 text-xs text-zinc-600">
@@ -868,54 +1021,74 @@ function SharesView({
   onCreate: () => void;
   onCopy: (text: string) => void;
 }) {
-  async function revoke(token: string) {
-    if (!window.confirm("Revoke this share link?")) return;
-    await fetch(`/api/admin/shares/${token}`, { method: "DELETE" });
+  const [revokeTarget, setRevokeTarget] = useState<ShareLink | null>(null);
+
+  async function revoke() {
+    if (!revokeTarget) return;
+    await fetch(`/api/admin/shares/${revokeTarget.token}`, { method: "DELETE" });
+    setRevokeTarget(null);
     await onRefresh();
   }
 
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.03]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 p-4">
-        <div>
-          <h2 className="text-xl font-semibold">Shared Links</h2>
-          <p className="mt-1 text-sm text-zinc-500">Create client links with view-only or download permission.</p>
-        </div>
-        <button onClick={onCreate} className="rounded-lg bg-[#d7ff3f] px-3 py-2 text-sm font-semibold text-black">New Share Link</button>
-      </div>
-      <div className="grid gap-3 p-3">
-        {shares.length === 0 ? <EmptyState icon={Share2} title="No share links yet" body="Create a link from My Drive or from this page." /> : null}
-        {shares.map((share) => (
-          <div key={share.token} className="rounded-lg border border-white/10 bg-black/20 p-4">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="font-medium text-white">{share.name}</p>
-                <span className={`rounded-md border px-2 py-0.5 text-[11px] ${isShareExpired(share) ? badgeClass("danger") : badgeClass("ok")}`}>
-                  {isShareExpired(share) ? "Expired" : "Active"}
-                </span>
-                <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-zinc-300">
-                  {share.canDownload ? "View + Download" : "View only"}
-                </span>
-              </div>
-              <p className="mt-2 truncate text-xs text-zinc-500" title={share.rootPath || "PublicShare"}>{share.rootPath || "PublicShare"}</p>
-              {share.note ? <p className="mt-2 text-xs text-zinc-500">{share.note}</p> : null}
-              <div className="mt-3 grid gap-2 text-xs text-zinc-500 md:grid-cols-2">
-                <span>Created: {formatDate(share.createdAt)}</span>
-                <span>Expires: {share.expiresAt ? formatDate(share.expiresAt) : "Never"}</span>
-              </div>
-              <p className="mt-3 truncate rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-xs text-zinc-300">
-                {origin}/share/{share.token}
-              </p>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button onClick={() => onCopy(`${origin}/share/${share.token}`)} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"><Copy className="h-4 w-4" />Copy</button>
-              <a href={`/share/${share.token}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"><ExternalLink className="h-4 w-4" />Open</a>
-              <button onClick={() => revoke(share.token)} className="rounded-lg border border-red-300/20 px-3 py-2 text-sm text-red-200 hover:bg-red-500/10">Revoke</button>
-            </div>
+    <>
+      <div className="rounded-lg border border-white/10 bg-white/[0.03]">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 p-4">
+          <div>
+            <h2 className="text-xl font-semibold">Shared Links</h2>
+            <p className="mt-1 text-sm text-zinc-500">Create client links with view-only or download permission.</p>
           </div>
-        ))}
+          <button onClick={onCreate} className="rounded-lg bg-[#d7ff3f] px-3 py-2 text-sm font-semibold text-black">New Share Link</button>
+        </div>
+        <div className="grid gap-3 p-3">
+          {shares.length === 0 ? <EmptyState icon={Share2} title="No share links yet" body="Create a link from My Drive or from this page." /> : null}
+          {shares.map((share) => (
+            <div key={share.token} className="rounded-lg border border-white/10 bg-black/20 p-4">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-white">{share.name}</p>
+                  <span className={`rounded-md border px-2 py-0.5 text-[11px] ${isShareExpired(share) ? badgeClass("danger") : badgeClass("ok")}`}>
+                    {isShareExpired(share) ? "Expired" : "Active"}
+                  </span>
+                  <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-zinc-300">
+                    {share.canDownload ? "View + Download" : "View only"}
+                  </span>
+                  <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-zinc-300">
+                    {share.visibility === "PRIVATE_EMAILS" ? "Private emails" : "Public"}
+                  </span>
+                </div>
+                <p className="mt-2 truncate text-xs text-zinc-500" title={share.rootPath || "PublicShare"}>{share.rootPath || "PublicShare"}</p>
+                {share.note ? <p className="mt-2 text-xs text-zinc-500">{share.note}</p> : null}
+                <div className="mt-3 grid gap-2 text-xs text-zinc-500 md:grid-cols-2">
+                  <span>Created: {formatDate(share.createdAt)}</span>
+                  <span>Expires: {share.expiresAt ? formatDate(share.expiresAt) : "Never"}</span>
+                </div>
+                {share.allowedEmails?.length ? (
+                  <p className="mt-2 text-xs text-zinc-500">Allowed: {share.allowedEmails.join(", ")}</p>
+                ) : null}
+                <p className="mt-3 truncate rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-xs text-zinc-300">
+                  {origin}/share/{share.token}
+                </p>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button onClick={() => onCopy(`${origin}/share/${share.token}`)} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"><Copy className="h-4 w-4" />Copy</button>
+                <a href={`/share/${share.token}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"><ExternalLink className="h-4 w-4" />Open</a>
+                <button onClick={() => setRevokeTarget(share)} className="rounded-lg border border-red-300/20 px-3 py-2 text-sm text-red-200 hover:bg-red-500/10">Revoke</button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+      <ConfirmModal
+        open={revokeTarget !== null}
+        title="Revoke share link?"
+        body={`Client access for ${revokeTarget?.name || "this link"} will stop immediately.`}
+        confirmLabel="Revoke"
+        danger
+        onClose={() => setRevokeTarget(null)}
+        onConfirm={() => void revoke()}
+      />
+    </>
   );
 }
 
@@ -935,11 +1108,22 @@ function ShareModal({
   result: { url: string; token: string } | null;
   origin: string;
   onClose: () => void;
-  onCreate: (input: { rootPath: string; name: string; canDownload: boolean; expiresAt: string | null; note: string }) => void;
+  onCreate: (input: {
+    rootPath: string;
+    name: string;
+    canDownload: boolean;
+    expiresAt: string | null;
+    note: string;
+    visibility: "PUBLIC" | "PRIVATE_EMAILS";
+    allowedEmails: string[];
+    permission: "VIEW_ONLY" | "DOWNLOAD";
+  }) => void;
   onCopy: (text: string) => void;
 }) {
   const [name, setName] = useState("Client Share");
   const [canDownload, setCanDownload] = useState(true);
+  const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE_EMAILS">("PUBLIC");
+  const [emails, setEmails] = useState("");
   const [expiry, setExpiry] = useState<"never" | "1d" | "7d" | "30d" | "custom">("never");
   const [customDate, setCustomDate] = useState("");
   const [note, setNote] = useState("");
@@ -962,6 +1146,9 @@ function ShareModal({
       canDownload,
       expiresAt: expiresAt(),
       note,
+      visibility,
+      allowedEmails: emails.split(/[,\n]/).map((email) => email.trim()).filter(Boolean),
+      permission: canDownload ? "DOWNLOAD" : "VIEW_ONLY",
     });
   }
 
@@ -999,6 +1186,26 @@ function ShareModal({
                 <p className="mt-1 text-xs text-zinc-500">Client can preview and download.</p>
               </button>
             </div>
+          </div>
+
+          <div>
+            <p className="text-sm text-zinc-300">Visibility</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <button type="button" onClick={() => setVisibility("PUBLIC")} className={`rounded-lg border p-3 text-left ${visibility === "PUBLIC" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
+                <p className="text-sm font-medium text-white">Public link</p>
+                <p className="mt-1 text-xs text-zinc-500">Anyone with the link can open it.</p>
+              </button>
+              <button type="button" onClick={() => setVisibility("PRIVATE_EMAILS")} className={`rounded-lg border p-3 text-left ${visibility === "PRIVATE_EMAILS" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
+                <p className="text-sm font-medium text-white">Private emails</p>
+                <p className="mt-1 text-xs text-zinc-500">Login required, email must match whitelist.</p>
+              </button>
+            </div>
+            {visibility === "PRIVATE_EMAILS" ? (
+              <label className="mt-3 block">
+                <span className="text-sm text-zinc-300">Allowed emails</span>
+                <textarea value={emails} onChange={(event) => setEmails(event.target.value)} rows={3} placeholder="client@example.com, team@example.com" className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-[#d7ff3f]" />
+              </label>
+            ) : null}
           </div>
 
           <div>
@@ -1052,6 +1259,260 @@ function ShareModal({
   );
 }
 
+function UploadModal({
+  open,
+  files,
+  uploading,
+  progress,
+  onClose,
+  onFilesChange,
+  onUpload,
+}: {
+  open: boolean;
+  files: globalThis.File[];
+  uploading: boolean;
+  progress: number;
+  onClose: () => void;
+  onFilesChange: (files: globalThis.File[]) => void;
+  onUpload: () => void;
+}) {
+  if (!open) return null;
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4">
+      <div className="max-h-[92vh] w-full overflow-auto rounded-t-xl border border-white/10 bg-[#101217] p-4 shadow-2xl md:max-w-xl md:rounded-xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-[#d7ff3f]">UPLOAD</p>
+            <h2 className="mt-1 text-xl font-semibold text-white">Upload Files</h2>
+            <p className="mt-1 text-sm text-zinc-500">Files are added to the current folder. Existing names get an automatic suffix.</p>
+          </div>
+          <button type="button" onClick={onClose} disabled={uploading} className="rounded-lg p-2 text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-40" aria-label="Close upload modal">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <label className="mt-5 flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-white/15 bg-black/20 px-4 py-8 text-center hover:border-[#d7ff3f]/60">
+          <Upload className="h-9 w-9 text-[#d7ff3f]" />
+          <span className="mt-3 text-sm font-medium text-white">Choose files</span>
+          <span className="mt-1 text-xs text-zinc-500">Multiple files supported. No overwrite by default.</span>
+          <input
+            key={files.length === 0 ? "empty-upload-input" : "selected-upload-input"}
+            type="file"
+            multiple
+            className="hidden"
+            disabled={uploading}
+            onChange={(event) => onFilesChange(Array.from(event.target.files || []))}
+          />
+        </label>
+
+        <div className="mt-4 rounded-lg border border-white/10 bg-black/20">
+          <div className="flex items-center justify-between border-b border-white/10 px-3 py-2 text-xs text-zinc-500">
+            <span>{files.length} selected</span>
+            <span>{formatBytes(totalBytes)}</span>
+          </div>
+          {uploading ? (
+            <div className="border-b border-white/10 px-3 py-3">
+              <div className="flex justify-between text-xs text-zinc-500">
+                <span>Uploading</span>
+                <span>{progress}%</span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full rounded-full bg-[#d7ff3f]" style={{ width: `${progress}%` }} />
+              </div>
+            </div>
+          ) : null}
+          <div className="max-h-56 overflow-auto">
+            {files.length === 0 ? (
+              <p className="px-3 py-6 text-center text-sm text-zinc-500">No files selected.</p>
+            ) : (
+              files.map((file) => (
+                <div key={`${file.name}-${file.size}-${file.lastModified}`} className="grid grid-cols-[minmax(0,1fr)_80px] gap-3 border-b border-white/10 px-3 py-2 last:border-0">
+                  <span className="truncate text-sm text-zinc-200" title={file.name}>{file.name}</span>
+                  <span className="text-right text-xs text-zinc-500">{formatBytes(file.size)}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <button type="button" onClick={() => onFilesChange([])} disabled={uploading || files.length === 0} className="rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 disabled:opacity-40">
+            Clear
+          </button>
+          <button type="button" onClick={onClose} disabled={uploading} className="rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 disabled:opacity-40">
+            Cancel
+          </button>
+          <button type="button" onClick={onUpload} disabled={uploading || files.length === 0} className="inline-flex items-center gap-2 rounded-lg bg-[#d7ff3f] px-4 py-2 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40">
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            Upload
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TextInputModal({
+  open,
+  title,
+  label,
+  value,
+  submitLabel,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  title: string;
+  label: string;
+  value: string;
+  submitLabel: string;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+        className="w-full rounded-t-xl border border-white/10 bg-[#101217] p-4 shadow-2xl md:max-w-md md:rounded-xl"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold text-white">{title}</h2>
+          <button type="button" onClick={onClose} className="rounded-lg p-2 text-zinc-400 hover:bg-white/10 hover:text-white" aria-label={`Close ${title}`}>
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <label className="mt-5 block">
+          <span className="text-sm text-zinc-300">{label}</span>
+          <input
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            autoFocus
+            className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-[#d7ff3f]"
+          />
+        </label>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10">Cancel</button>
+          <button disabled={!value.trim()} className="rounded-lg bg-[#d7ff3f] px-4 py-2 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40">{submitLabel}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function MoveModal({
+  open,
+  count,
+  targetFolder,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  count: number;
+  targetFolder: string;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+        className="w-full rounded-t-xl border border-white/10 bg-[#101217] p-4 shadow-2xl md:max-w-lg md:rounded-xl"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-[#d7ff3f]">MOVE</p>
+            <h2 className="mt-1 text-xl font-semibold text-white">Move {count} item(s)</h2>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg p-2 text-zinc-400 hover:bg-white/10 hover:text-white" aria-label="Close move modal">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <label className="mt-5 block">
+          <span className="text-sm text-zinc-300">Target folder path</span>
+          <input
+            value={targetFolder}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="relative/path/from/PublicShare"
+            autoFocus
+            className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-[#d7ff3f]"
+          />
+        </label>
+        <p className="mt-2 text-xs text-zinc-500">Leave empty to move to PublicShare root. The server prevents moving outside ASSET_ROOT.</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10">Cancel</button>
+          <button className="rounded-lg bg-[#d7ff3f] px-4 py-2 text-sm font-semibold text-black">Move</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ConfirmModal({
+  open,
+  title,
+  body,
+  confirmLabel,
+  danger = false,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  title: string;
+  body: string;
+  confirmLabel: string;
+  danger?: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4">
+      <div className="w-full rounded-t-xl border border-white/10 bg-[#101217] p-4 shadow-2xl md:max-w-md md:rounded-xl">
+        <div className="flex items-start gap-3">
+          <div className={`mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${danger ? "bg-red-500/10 text-red-200" : "bg-[#d7ff3f]/10 text-[#d7ff3f]"}`}>
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold text-white">{title}</h2>
+            <p className="mt-2 text-sm leading-6 text-zinc-400">{body}</p>
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10">Cancel</button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={`rounded-lg px-4 py-2 text-sm font-semibold ${danger ? "bg-red-400 text-black" : "bg-[#d7ff3f] text-black"}`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function canRequestPreview(item: DriveItem) {
+  return item.type === "video" && ["missing", "failed", "unsupported"].includes(item.previewStatus);
+}
+
 function DriveView(props: {
   breadcrumbs: string[];
   currentPath: string;
@@ -1081,6 +1542,8 @@ function DriveView(props: {
   onCopy: (text: string) => void;
   onRetry: () => void;
 }) {
+  const selectedVideoPaths = props.selectedItems.filter(canRequestPreview).map((item) => item.path);
+
   return (
     <div className="space-y-4">
       <nav className="flex flex-wrap items-center gap-1 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm">
@@ -1115,7 +1578,13 @@ function DriveView(props: {
         {props.selectedPaths.size > 0 ? (
           <div className="sticky bottom-3 z-30 mt-3 flex flex-wrap gap-2 rounded-lg border border-white/10 bg-[#101217]/95 p-2 shadow-2xl backdrop-blur md:static md:border-t md:bg-transparent md:p-0 md:pt-3 md:shadow-none">
             <span className="inline-flex items-center rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200">{props.selectedPaths.size} selected</span>
-            <button onClick={() => props.onRequestPreview(props.selectedItems.map((item) => item.path))} className="rounded-lg bg-[#d7ff3f] px-3 py-2 text-sm font-semibold text-black">Request preview</button>
+            <button
+              onClick={() => props.onRequestPreview(selectedVideoPaths)}
+              disabled={selectedVideoPaths.length === 0}
+              className="rounded-lg bg-[#d7ff3f] px-3 py-2 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Request preview
+            </button>
             <button onClick={props.onDownloadSelected} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200"><Download className="h-4 w-4" />Download selected</button>
             <button onClick={props.onShareSelected} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200"><Share2 className="h-4 w-4" />Share</button>
             <button onClick={props.onMove} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200"><MoveRight className="h-4 w-4" />Move</button>
@@ -1224,7 +1693,9 @@ function ItemActions({ item, ...props }: { item: DriveItem } & Parameters<typeof
           </a>
         ) : null}
         {item.directDownloadUrl ? <button onClick={() => props.onCopy(item.directDownloadUrl || "")} className="menu-btn"><Copy className="h-4 w-4" />Copy link</button> : null}
-        <button onClick={() => props.onRequestPreview([item.path])} className="menu-btn"><RotateCw className="h-4 w-4" />Request preview</button>
+        {canRequestPreview(item) ? (
+          <button onClick={() => props.onRequestPreview([item.path])} className="menu-btn"><RotateCw className="h-4 w-4" />Request preview</button>
+        ) : null}
         <button onClick={() => props.onRename(item)} className="menu-btn"><FileText className="h-4 w-4" />Rename</button>
         <button onClick={() => props.onShare(item.path)} className="menu-btn"><Link className="h-4 w-4" />Share access</button>
         <button onClick={() => props.onDelete([item.path])} className="menu-btn text-red-200"><Trash2 className="h-4 w-4" />Delete</button>

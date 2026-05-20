@@ -150,7 +150,7 @@ export async function getPreviewMetadata(
     };
   }
 
-  if (["mp4", "webm", "mov", "m4v", "avi", "mkv"].includes(extension)) {
+  if (["mp4", "webm", "mov", "m4v", "avi", "mkv", "dxv"].includes(extension)) {
     const [previewPath, thumbnailPath] = await Promise.all([
       findPreviewCachePath(relativePath, stat),
       findThumbnailCachePath(relativePath, stat),

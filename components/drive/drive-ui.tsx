@@ -18,6 +18,7 @@ import {
   Loader2,
   Play,
   RotateCw,
+  Share2,
   Square,
   X,
 } from "lucide-react";
@@ -278,6 +279,7 @@ export function PreviewModal({
   isAdmin = false,
   onClose,
   onCopy,
+  onShare,
   onRequestPreview,
 }: {
   item: DriveItem | null;
@@ -286,6 +288,7 @@ export function PreviewModal({
   isAdmin?: boolean;
   onClose: () => void;
   onCopy: (text: string) => void;
+  onShare?: (path: string) => void;
   onRequestPreview?: (path: string) => void;
 }) {
   const [textPreview, setTextPreview] = useState("");
@@ -345,6 +348,11 @@ export function PreviewModal({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {isAdmin && onShare ? (
+              <button type="button" onClick={() => onShare(item.path)} className="rounded-lg border border-white/10 p-2 text-zinc-300 hover:bg-white/10" title="Share access">
+                <Share2 className="h-4 w-4" />
+              </button>
+            ) : null}
             <button type="button" onClick={() => onCopy(copyTarget)} className="rounded-lg border border-white/10 p-2 text-zinc-300 hover:bg-white/10" title="Copy link">
               <Copy className="h-4 w-4" />
             </button>

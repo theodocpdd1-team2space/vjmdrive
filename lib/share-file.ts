@@ -3,12 +3,15 @@ import path from "path";
 import { contentDisposition, getContentType } from "./file-utils";
 import { nodeStream, parseRange } from "./http-file";
 import { getPreviewRoot, getThumbnailRoot, findPreviewCachePath, findThumbnailCachePath } from "./preview-cache";
-import { getValidShareLink } from "./share-db";
+import { getCurrentUser } from "./auth";
+import { canUserAccessShare, getValidShareLink } from "./share-db";
 import { assertRealPathInsideRoot, isDriveSubPath, resolveSafePath } from "./safe-path";
 
 export async function resolveSharePath(token: string, requestedPath: string) {
   const share = await getValidShareLink(token);
   if (!share) return null;
+  const user = await getCurrentUser();
+  if (!canUserAccessShare(share, user)) return null;
 
   const fullPath = path.posix.join(share.rootPath, requestedPath || "");
   if (!isDriveSubPath(share.rootPath, fullPath)) return null;
@@ -21,7 +24,7 @@ export async function resolveSharePath(token: string, requestedPath: string) {
 
 export async function createShareFileResponse(token: string, requestedPath: string, range: string | null, download: boolean) {
   const resolved = await resolveSharePath(token, requestedPath);
-  if (!resolved || (!resolved.share.canDownload && download)) return null;
+  if (!resolved || (!resolved.share.downloadEnabled && download)) return null;
 
   const fileStat = await stat(resolved.safePath.absolutePath).catch(() => null);
   if (!fileStat || fileStat.isDirectory()) return null;

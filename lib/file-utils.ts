@@ -10,7 +10,7 @@ export type DriveItemType =
   | "file";
 
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
-const VIDEO_EXTENSIONS = new Set(["mp4", "webm", "mov", "m4v", "avi", "mkv"]);
+const VIDEO_EXTENSIONS = new Set(["mp4", "webm", "mov", "m4v", "avi", "mkv", "dxv"]);
 const TEXT_EXTENSIONS = new Set(["txt", "json", "md", "log"]);
 const ARCHIVE_EXTENSIONS = new Set(["zip", "rar", "7z"]);
 
@@ -73,6 +73,8 @@ export function getContentType(fileName: string) {
       return "video/x-msvideo";
     case "mkv":
       return "video/x-matroska";
+    case "dxv":
+      return "video/quicktime";
     case "pdf":
       return "application/pdf";
     case "json":

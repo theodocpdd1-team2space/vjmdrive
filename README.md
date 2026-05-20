@@ -17,7 +17,10 @@ Private asset drive untuk VJMRTIM. Next.js tetap menjadi UI, browser, preview, a
 - My Drive punya grid, list, dan compact view.
 - Grid/list memakai thumbnail dari `/api/thumbnail` jika tersedia.
 - Video tidak autoplay di grid; video hanya dimainkan saat preview modal dibuka.
-- Preview file memakai full-screen modal dengan download/copy actions.
+- Preview file memakai full-screen modal dengan share/download/copy actions.
+- Video preview selalu memakai cached `/api/preview` lebih dulu; original video besar hanya dipakai sebagai native fallback jika tidak ada cache.
+- Upload memakai modal dengan multiple file picker, selected file list, dan loading state.
+- Admin destructive actions memakai confirmation modal dan soft-delete.
 - Mobile memakai full-screen preview modal dan selected action bar.
 
 ## Local Development
@@ -75,7 +78,7 @@ Run scanner manual:
 npm run preview:scan
 ```
 
-Scanner membaca `ASSET_ROOT` secara recursive, mencari video `.mp4 .mov .m4v .webm .avi .mkv`, lalu menulis:
+Scanner membaca `ASSET_ROOT` secara recursive, mencari video `.mp4 .mov .m4v .webm .avi .mkv .dxv`, lalu menulis:
 
 ```txt
 PREVIEW_ROOT/<hash>.mp4
@@ -171,6 +174,7 @@ Client route:
 Client breadcrumb dimulai dari shared root, bukan full `PublicShare`.
 
 Admin bisa membuat share link dari current folder, selected folder, atau selected file. File-root share didukung; client akan melihat satu item sebagai shared root.
+Share modal mendukung client name, View only / View + Download, expiry Never / 1 day / 7 days / 30 days / custom, note, Copy, dan Open.
 
 ## Direct Download Architecture
 

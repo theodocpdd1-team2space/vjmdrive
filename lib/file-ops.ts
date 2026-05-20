@@ -38,10 +38,7 @@ export async function createFolder(parentPath: string, name: string) {
 
 export async function renameItem(relativePath: string, newName: string) {
   const source = await resolveExisting(relativePath);
-  const destination = path.join(
-    /*turbopackIgnore: true*/ path.dirname(source.absolutePath),
-    assertSafeName(newName)
-  );
+  const destination = path.join(/*turbopackIgnore: true*/ path.dirname(source.absolutePath), assertSafeName(newName));
   const root = getAssetRoot();
 
   if ((await fs.stat(destination).catch(() => null)) !== null) {

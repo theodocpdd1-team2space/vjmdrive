@@ -7,15 +7,18 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "drive:init": "tsx scripts/drive-init.ts",
     "preview:scan": "tsx scripts/preview-scan.ts"
   },
   "dependencies": {
     "archiver": "^8.0.0",
+    "bcryptjs": "^3.0.3",
     "jose": "^6.2.3",
     "lucide-react": "^1.16.0",
     "next": "16.2.6",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "resend": "^6.12.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listDriveFolder } from "@/lib/drive-list";
-import { getValidShareLink } from "@/lib/share-db";
+import { getCurrentUser } from "@/lib/auth";
+import { canUserAccessShare, getValidShareLink } from "@/lib/share-db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +10,16 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/share/[token
   const { token } = await ctx.params;
   const share = await getValidShareLink(token);
   if (!share) return NextResponse.json({ ok: false, message: "Share link expired or not found" }, { status: 404 });
+  const user = await getCurrentUser();
+  if (!canUserAccessShare(share, user)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        message: user ? "Access denied for this email." : "Please login to access this private share.",
+      },
+      { status: user ? 403 : 401 }
+    );
+  }
 
   try {
     const path = req.nextUrl.searchParams.get("path") || "";
@@ -23,7 +34,10 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/share/[token
       ok: true,
       share: {
         name: share.name,
-        canDownload: share.canDownload,
+        title: share.title,
+        canDownload: share.downloadEnabled,
+        permission: share.permission,
+        visibility: share.visibility,
         expiresAt: share.expiresAt,
         note: share.note || "",
       },

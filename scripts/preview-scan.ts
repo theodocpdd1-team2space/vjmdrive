@@ -9,7 +9,7 @@ import {
 } from "../lib/preview-cache";
 import { getAssetRoot, isIgnoredName } from "../lib/safe-path";
 
-const VIDEO_EXTENSIONS = new Set(["mp4", "mov", "m4v", "webm", "avi", "mkv"]);
+const VIDEO_EXTENSIONS = new Set(["mp4", "mov", "m4v", "webm", "avi", "mkv", "dxv"]);
 const DEFAULT_CONCURRENCY = 1;
 
 type VideoJob = {
