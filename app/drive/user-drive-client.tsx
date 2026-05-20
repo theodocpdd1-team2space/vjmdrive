@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
+  CalendarClock,
   ChevronRight,
+  Copy,
+  Download,
+  ExternalLink,
   File,
   Folder,
   HardDrive,
@@ -19,6 +24,7 @@ import {
   User,
   X,
 } from "lucide-react";
+import { EmailChipsInput } from "@/components/common/email-chips-input";
 import { formatBytes } from "@/components/drive/drive-ui";
 
 type UserItem = {
@@ -27,6 +33,15 @@ type UserItem = {
   type: string;
   size: string | null;
   bytes: number;
+};
+
+type ShareResult = {
+  url: string;
+  token: string;
+  permission: string;
+  expiresAt: string | null;
+  allowedEmails: string[];
+  failedEmails: string[];
 };
 
 const navItems = [
@@ -45,6 +60,8 @@ export function UserDriveClient() {
   const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [shareTarget, setShareTarget] = useState<UserItem | null>(null);
+  const [shareResult, setShareResult] = useState<ShareResult | null>(null);
 
   const load = useCallback(async (nextPath: string) => {
     setLoading(true);
@@ -339,10 +356,9 @@ export function UserDriveClient() {
               {!loading && filteredItems.length > 0 ? (
                 <div className="divide-y divide-white/10">
                   {filteredItems.map((item) => (
-                    <button
+                    <div
                       key={item.path}
-                      onClick={() => (item.type === "folder" ? void load(item.path) : undefined)}
-                      className="grid w-full grid-cols-[42px_minmax(0,1fr)_92px] items-center gap-3 px-4 py-3 text-left transition hover:bg-white/[0.04] md:grid-cols-[42px_minmax(0,1fr)_140px_140px]"
+                      className="grid w-full grid-cols-[42px_minmax(0,1fr)_92px] items-center gap-3 px-4 py-3 text-left transition hover:bg-white/[0.04] md:grid-cols-[42px_minmax(0,1fr)_140px_140px_120px]"
                     >
                       <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
                         {item.type === "folder" ? (
@@ -362,9 +378,24 @@ export function UserDriveClient() {
                       </span>
 
                       <span className="hidden text-right text-xs text-zinc-600 md:block">
-                        {item.type === "folder" ? "Open folder" : "Stored file"}
+                        {item.type === "folder" ? (
+                          <button onClick={() => void load(item.path)} className="rounded-xl border border-white/10 px-3 py-2 font-bold text-zinc-300 hover:bg-white/10 hover:text-white">Open</button>
+                        ) : (
+                          "Stored file"
+                        )}
                       </span>
-                    </button>
+
+                      <button
+                        onClick={() => {
+                          setShareTarget(item);
+                          setShareResult(null);
+                        }}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
+                      >
+                        <Share2 className="h-4 w-4" />
+                        Share
+                      </button>
+                    </div>
                   ))}
                 </div>
               ) : null}
@@ -372,6 +403,17 @@ export function UserDriveClient() {
           </div>
         </div>
       </section>
+
+      <UserShareModal
+        item={shareTarget}
+        result={shareResult}
+        onClose={() => {
+          setShareTarget(null);
+          setShareResult(null);
+        }}
+        onCreated={(result) => setShareResult(result)}
+        onNotice={setNotice}
+      />
 
       {uploading ? (
         <div className="fixed inset-x-3 bottom-3 z-[70] rounded-3xl border border-white/10 bg-[#101217]/95 p-4 shadow-2xl shadow-black/40 backdrop-blur md:left-auto md:right-6 md:w-96">
@@ -388,5 +430,183 @@ export function UserDriveClient() {
         </div>
       ) : null}
     </main>
+  );
+}
+
+function UserShareModal({
+  item,
+  result,
+  onClose,
+  onCreated,
+  onNotice,
+}: {
+  item: UserItem | null;
+  result: ShareResult | null;
+  onClose: () => void;
+  onCreated: (result: ShareResult) => void;
+  onNotice: (message: string) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [permission, setPermission] = useState<"VIEW_ONLY" | "DOWNLOAD">("DOWNLOAD");
+  const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE_EMAILS">("PUBLIC");
+  const [emails, setEmails] = useState<string[]>([]);
+  const [expiry, setExpiry] = useState<"never" | "1d" | "7d" | "30d" | "custom">("never");
+  const [customDate, setCustomDate] = useState("");
+  const [note, setNote] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  if (!item) return null;
+  const activeItem = item;
+
+  function getExpiresAt() {
+    if (expiry === "never") return null;
+    if (expiry === "custom") return customDate ? new Date(customDate).toISOString() : null;
+    const days = expiry === "1d" ? 1 : expiry === "7d" ? 7 : 30;
+    return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  async function createShare(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setError("");
+
+    const res = await fetch("/api/user/share", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        rootPath: activeItem.path,
+        title: title.trim() || activeItem.name,
+        permission,
+        visibility,
+        allowedEmails: emails,
+        expiresAt: getExpiresAt(),
+        note,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setSubmitting(false);
+
+    if (!res.ok || !data.ok) {
+      setError(data.message || "Create share failed.");
+      return;
+    }
+
+    const url = `${window.location.origin}${data.url}`;
+    onCreated({
+      url,
+      token: data.token,
+      permission,
+      expiresAt: getExpiresAt(),
+      allowedEmails: emails,
+      failedEmails: data.invite?.failed || [],
+    });
+    onNotice(data.invite?.failed?.length ? "Share created, but some invites failed." : "Share link created.");
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4">
+      <div className="max-h-[92vh] w-full overflow-auto rounded-t-3xl border border-white/10 bg-[#101217] p-4 shadow-2xl md:max-w-xl md:rounded-3xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#d7ff3f]">Share from My Drive</p>
+            <h2 className="mt-2 text-xl font-black text-white">{activeItem.name}</h2>
+            <p className="mt-1 truncate text-sm text-zinc-500">{activeItem.path}</p>
+          </div>
+          <button onClick={onClose} className="rounded-xl p-2 text-zinc-400 hover:bg-white/10 hover:text-white" aria-label="Close share modal">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {result ? (
+          <div className="mt-5 space-y-4">
+            <div className="rounded-3xl border border-[#d7ff3f]/20 bg-[#d7ff3f]/10 p-4">
+              <p className="font-black text-[#d7ff3f]">Share link ready</p>
+              <p className="mt-3 break-all rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-xs text-zinc-100">{result.url}</p>
+              <div className="mt-3 grid gap-2 text-xs text-zinc-300 sm:grid-cols-3">
+                <span>{result.permission}</span>
+                <span>{result.expiresAt ? new Date(result.expiresAt).toLocaleString("id-ID") : "Never expires"}</span>
+                <span>{result.allowedEmails.length ? result.allowedEmails.join(", ") : "Public login"}</span>
+              </div>
+              {result.failedEmails.length ? <p className="mt-3 text-xs font-semibold text-amber-300">Invite failed: {result.failedEmails.join(", ")}</p> : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => void navigator.clipboard.writeText(result.url)} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm font-bold text-zinc-200 hover:bg-white/10">
+                <Copy className="h-4 w-4" />
+                Copy
+              </button>
+              <a href={result.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-[#d7ff3f] px-3 py-2 text-sm font-black text-black">
+                <ExternalLink className="h-4 w-4" />
+                Open
+              </a>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={createShare} className="mt-5 space-y-4">
+            <label className="block">
+              <span className="text-sm text-zinc-300">Share title</span>
+              <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={activeItem.name} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none focus:border-[#d7ff3f]/50" />
+            </label>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button type="button" onClick={() => setPermission("VIEW_ONLY")} className={`rounded-2xl border p-3 text-left ${permission === "VIEW_ONLY" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
+                <p className="font-bold text-white">View only</p>
+                <p className="mt-1 text-xs text-zinc-500">Preview without download.</p>
+              </button>
+              <button type="button" onClick={() => setPermission("DOWNLOAD")} className={`rounded-2xl border p-3 text-left ${permission === "DOWNLOAD" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
+                <Download className="h-4 w-4 text-[#d7ff3f]" />
+                <p className="mt-2 font-bold text-white">View + Download</p>
+              </button>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button type="button" onClick={() => setVisibility("PUBLIC")} className={`rounded-2xl border p-3 text-left ${visibility === "PUBLIC" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
+                <p className="font-bold text-white">Public login</p>
+                <p className="mt-1 text-xs text-zinc-500">Any logged-in user can open.</p>
+              </button>
+              <button type="button" onClick={() => setVisibility("PRIVATE_EMAILS")} className={`rounded-2xl border p-3 text-left ${visibility === "PRIVATE_EMAILS" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
+                <p className="font-bold text-white">Private emails</p>
+                <p className="mt-1 text-xs text-zinc-500">Only allowed emails can open.</p>
+              </button>
+            </div>
+
+            {visibility === "PRIVATE_EMAILS" ? <EmailChipsInput value={emails} onChange={setEmails} placeholder="client@example.com, team@example.com" disabled={submitting} /> : null}
+
+            <div>
+              <p className="text-sm text-zinc-300">Expiry</p>
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                {[
+                  ["never", "Never"],
+                  ["1d", "1 day"],
+                  ["7d", "7 days"],
+                  ["30d", "30 days"],
+                  ["custom", "Custom"],
+                ].map(([value, label]) => (
+                  <button key={value} type="button" onClick={() => setExpiry(value as typeof expiry)} className={`rounded-xl border px-3 py-2 text-sm ${expiry === value ? "border-[#d7ff3f] bg-[#d7ff3f]/10 text-white" : "border-white/10 text-zinc-400"}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {expiry === "custom" ? (
+                <label className="mt-2 flex items-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-3 py-3">
+                  <CalendarClock className="h-4 w-4 text-zinc-500" />
+                  <input type="datetime-local" value={customDate} onChange={(event) => setCustomDate(event.target.value)} className="w-full bg-transparent text-sm outline-none" />
+                </label>
+              ) : null}
+            </div>
+
+            <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} placeholder="Optional note..." className="w-full resize-none rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-[#d7ff3f]/50" />
+            {error ? <p className="rounded-2xl border border-red-300/20 bg-red-300/10 px-3 py-2 text-sm text-red-100">{error}</p> : null}
+            <button disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60">
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+              {submitting ? "Generating..." : "Generate Link"}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
   );
 }

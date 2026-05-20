@@ -19,14 +19,13 @@ import {
   Search,
   Shield,
   Trash2,
-  X,
 } from "lucide-react";
+import { EmailChipsInput } from "@/components/common/email-chips-input";
 import type { ShareLink } from "@/lib/share-db";
 
 type FilterMode = "ALL" | "ACTIVE" | "EXPIRED" | "DISABLED" | "PINNED" | "PUBLIC" | "PRIVATE_EMAILS";
 
 type EmailEditorState = {
-  draft: string;
   emails: string[];
 };
 
@@ -87,7 +86,6 @@ export function AdminSharesClient({
   function getEditor(share: ShareLink) {
     return (
       editors[share.token] || {
-        draft: "",
         emails: share.allowedEmails || [],
       }
     );
@@ -169,60 +167,12 @@ export function AdminSharesClient({
     setNotice("Link copied.");
   }
 
-  function pushDraftAsEmails(share: ShareLink) {
-    const editor = getEditor(share);
-
-    const parts = editor.draft
-      .split(/[,\n;]/)
-      .map(normalizeEmail)
-      .filter(Boolean);
-
-    const nextEmails = uniqueEmails([...editor.emails, ...parts]);
-
-    setEditor(share.token, {
-      draft: "",
-      emails: nextEmails,
-    });
-  }
-
-  function handleEmailInput(share: ShareLink, value: string) {
-    const shouldCommit = /[,;\n]/.test(value);
-
-    if (!shouldCommit) {
-      setEditor(share.token, {
-        ...getEditor(share),
-        draft: value,
-      });
-      return;
-    }
-
-    const editor = getEditor(share);
-    const parts = value
-      .split(/[,\n;]/)
-      .map(normalizeEmail)
-      .filter(Boolean);
-
-    setEditor(share.token, {
-      draft: "",
-      emails: uniqueEmails([...editor.emails, ...parts]),
-    });
-  }
-
-  function removeEmail(share: ShareLink, email: string) {
-    const editor = getEditor(share);
-
-    setEditor(share.token, {
-      ...editor,
-      emails: editor.emails.filter((item) => item !== email),
-    });
-  }
-
   async function saveEmails(share: ShareLink) {
     const editor = getEditor(share);
-    const emails = uniqueEmails([...editor.emails, editor.draft]);
+    const emails = uniqueEmails(editor.emails);
+    const newEmails = emails.filter((email) => !share.allowedEmails.includes(email));
 
     setEditor(share.token, {
-      draft: "",
       emails,
     });
 
@@ -234,6 +184,10 @@ export function AdminSharesClient({
       },
       "Allowed emails updated."
     );
+
+    for (const email of newEmails) {
+      await resendInvite(share.token, email);
+    }
   }
 
   const metrics = useMemo(() => {
@@ -489,41 +443,12 @@ export function AdminSharesClient({
                           </div>
                         </div>
 
-                        <div className="flex min-h-[56px] flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2">
-                          {editor.emails.map((email) => (
-                            <span
-                              key={email}
-                              className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-2 text-sm font-bold text-zinc-100"
-                            >
-                              <span className="max-w-[220px] truncate">{email}</span>
-                              <button
-                                onClick={() => removeEmail(share, email)}
-                                className="rounded-full text-zinc-500 hover:text-white"
-                                aria-label={`Remove ${email}`}
-                              >
-                                <X className="h-4 w-4" />
-                              </button>
-                            </span>
-                          ))}
-
-                          <input
-                            value={editor.draft}
-                            onChange={(event) => handleEmailInput(share, event.target.value)}
-                            onBlur={() => pushDraftAsEmails(share)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === "Tab") {
-                                event.preventDefault();
-                                pushDraftAsEmails(share);
-                              }
-
-                              if (event.key === "Backspace" && !editor.draft && editor.emails.length > 0) {
-                                removeEmail(share, editor.emails[editor.emails.length - 1]);
-                              }
-                            }}
-                            placeholder={editor.emails.length ? "Add another email..." : "Add email, comma separated..."}
-                            className="min-w-[220px] flex-1 bg-transparent px-1 py-2 text-sm text-white outline-none placeholder:text-zinc-600"
-                          />
-                        </div>
+                        <EmailChipsInput
+                          value={editor.emails}
+                          onChange={(emails) => setEditor(share.token, { emails })}
+                          placeholder="Add email, comma separated..."
+                          disabled={isUpdating}
+                        />
 
                         <div className="mt-3 flex flex-wrap gap-2">
                           {editor.emails.map((email) => (

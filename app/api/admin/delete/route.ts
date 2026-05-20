@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
 import { softDelete } from "@/lib/file-ops";
+import { cleanupDeletedPathMetadata } from "@/lib/path-metadata";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,7 +14,8 @@ export async function DELETE(req: NextRequest) {
 
   try {
     const deleted = await softDelete(paths);
-    return NextResponse.json({ ok: true, deletedCount: deleted.length, deleted });
+    const metadata = await cleanupDeletedPathMetadata(deleted);
+    return NextResponse.json({ ok: true, deletedCount: deleted.length, deleted, metadata });
   } catch (caught) {
     return NextResponse.json(
       { ok: false, message: caught instanceof Error ? caught.message : "Delete failed" },

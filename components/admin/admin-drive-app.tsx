@@ -36,6 +36,7 @@ import {
   X,
 } from "lucide-react";
 import { logoutAndRedirect } from "@/components/common/logout";
+import { EmailChipsInput } from "@/components/common/email-chips-input";
 import {
   DownloadModeBadge,
   EmptyState,
@@ -200,6 +201,7 @@ export default function AdminDriveApp() {
   const [moveModalOpen, setMoveModalOpen] = useState(false);
   const [moveTargetFolder, setMoveTargetFolder] = useState("");
   const [deleteTargets, setDeleteTargets] = useState<string[] | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [shareTargetPath, setShareTargetPath] = useState<string | null>(null);
   const [shareResult, setShareResult] = useState<{
     url: string;
@@ -529,9 +531,10 @@ export default function AdminDriveApp() {
 
   async function deleteSelectedAction() {
     const paths = deleteTargets || [];
-    if (!paths.length) return;
+    if (!paths.length || deleting) return;
 
     try {
+      setDeleting(true);
       await adminJson("/api/admin/delete", "DELETE", { paths });
       setNotice("Moved to soft trash.");
       setDeleteTargets(null);
@@ -540,6 +543,8 @@ export default function AdminDriveApp() {
       await loadDrive(currentPath);
     } catch (caught) {
       setNotice(caught instanceof Error ? caught.message : "Delete failed.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -725,6 +730,7 @@ export default function AdminDriveApp() {
             <NavButton icon={Folder} label="Drive" active={activeView === "drive"} onClick={() => switchView("drive")} />
             <a href="/admin/users" className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-400 transition hover:bg-white/10 hover:text-white"><Users className="h-4 w-4" />Users</a>
             <NavButton icon={Share2} label="Shares" active={activeView === "shares"} onClick={() => switchView("shares")} />
+            <a href="/admin/access-requests" className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-400 transition hover:bg-white/10 hover:text-white"><Shield className="h-4 w-4" />Access Requests</a>
             <NavButton icon={RotateCw} label="Preview Queue" active={activeView === "queue"} onClick={() => switchView("queue")} />
             <NavButton icon={Settings} label="Settings" active={activeView === "settings"} onClick={() => switchView("settings")} />
             <button type="button" onClick={logout} className="mt-3 flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-400 transition hover:bg-white/10 hover:text-white"><LogOut className="h-4 w-4" />Logout</button>
@@ -924,7 +930,10 @@ export default function AdminDriveApp() {
         body={`${deleteTargets?.length || 0} item(s) will be moved to cache trash. Original paths stay recoverable from the server trash folder.`}
         confirmLabel="Move to Trash"
         danger
-        onClose={() => setDeleteTargets(null)}
+        loading={deleting}
+        onClose={() => {
+          if (!deleting) setDeleteTargets(null);
+        }}
         onConfirm={() => void deleteSelectedAction()}
       />
     </main>
@@ -1184,7 +1193,7 @@ function ShareModal({
   const [name, setName] = useState("Client Share");
   const [canDownload, setCanDownload] = useState(true);
   const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE_EMAILS">("PUBLIC");
-  const [emails, setEmails] = useState("");
+  const [emails, setEmails] = useState<string[]>([]);
   const [expiry, setExpiry] = useState<"never" | "1d" | "7d" | "30d" | "custom">("never");
   const [customDate, setCustomDate] = useState("");
   const [note, setNote] = useState("");
@@ -1201,23 +1210,10 @@ function ShareModal({
     return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
   }
 
-  function parseEmails() {
-    const list = emails
-      .split(/[,\n]/)
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean);
-    return Array.from(new Set(list));
-  }
-
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting) return;
-    const allowedEmails = parseEmails();
-    const invalidEmails = allowedEmails.filter((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
-    if (visibility === "PRIVATE_EMAILS" && invalidEmails.length) {
-      setFormError(`Invalid email: ${invalidEmails.join(", ")}`);
-      return;
-    }
+    const allowedEmails = emails;
     setFormError("");
     setSubmitting(true);
     try {
@@ -1287,10 +1283,12 @@ function ShareModal({
               </button>
             </div>
             {visibility === "PRIVATE_EMAILS" ? (
-              <label className="mt-3 block">
+              <div className="mt-3">
                 <span className="text-sm text-zinc-300">Allowed emails</span>
-                <textarea value={emails} onChange={(event) => setEmails(event.target.value)} rows={3} placeholder="client@example.com, team@example.com" className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-[#d7ff3f]" />
-              </label>
+                <div className="mt-2">
+                  <EmailChipsInput value={emails} onChange={setEmails} placeholder="client@example.com, team@example.com" disabled={submitting} />
+                </div>
+              </div>
             ) : null}
           </div>
 
@@ -1586,6 +1584,7 @@ function ConfirmModal({
   body,
   confirmLabel,
   danger = false,
+  loading = false,
   onClose,
   onConfirm,
 }: {
@@ -1594,6 +1593,7 @@ function ConfirmModal({
   body: string;
   confirmLabel: string;
   danger?: boolean;
+  loading?: boolean;
   onClose: () => void;
   onConfirm: () => void;
 }) {
@@ -1612,12 +1612,14 @@ function ConfirmModal({
           </div>
         </div>
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10">Cancel</button>
+          <button type="button" onClick={onClose} disabled={loading} className="rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50">Cancel</button>
           <button
             type="button"
             onClick={onConfirm}
-            className={`rounded-lg px-4 py-2 text-sm font-semibold ${danger ? "bg-red-400 text-black" : "bg-[#d7ff3f] text-black"}`}
+            disabled={loading}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${danger ? "bg-red-400 text-black" : "bg-[#d7ff3f] text-black"}`}
           >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {confirmLabel}
           </button>
         </div>

@@ -9,7 +9,9 @@ import {
   HardDrive,
   Home,
   LockKeyhole,
+  LogIn,
   Search,
+  Send,
   X,
 } from "lucide-react";
 import {
@@ -66,6 +68,9 @@ export default function SharePage() {
   const [error, setError] = useState("");
   const [errorCode, setErrorCode] = useState("");
   const [notice, setNotice] = useState("");
+  const [currentUserEmail, setCurrentUserEmail] = useState("");
+  const [accessMessage, setAccessMessage] = useState("");
+  const [requestingAccess, setRequestingAccess] = useState(false);
 
   const loginUrl = `/login?next=${encodeURIComponent(`/share/${token}`)}`;
 
@@ -125,6 +130,14 @@ export default function SharePage() {
     return () => window.clearTimeout(timer);
   }, [loadFolder]);
 
+  useEffect(() => {
+    if (errorCode !== "EMAIL_NOT_ALLOWED") return;
+    void fetch("/api/auth/me", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => setCurrentUserEmail(data?.user?.email || ""))
+      .catch(() => undefined);
+  }, [errorCode]);
+
   function open(item: DriveItem) {
     if (item.type === "folder") {
       setQuery("");
@@ -167,6 +180,25 @@ export default function SharePage() {
 
     setNotice(`Opening ${selectedFiles.length} download link(s).`);
     window.setTimeout(() => setNotice(""), 2400);
+  }
+
+  async function requestAccess() {
+    if (requestingAccess) return;
+    setRequestingAccess(true);
+    setNotice("");
+
+    const res = await fetch(`/api/share/${token}/request-access`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ message: accessMessage }),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    setRequestingAccess(false);
+    setNotice(res.ok && data.ok ? "Access request sent. The admin can approve it from driveOne." : data.message || "Request failed.");
+    window.setTimeout(() => setNotice(""), 3200);
   }
 
   const breadcrumbs = path.split("/").filter(Boolean);
@@ -241,12 +273,42 @@ export default function SharePage() {
               <p className="mt-2 max-w-md text-sm leading-relaxed text-zinc-500">{error}</p>
             </div>
             {errorCode === "EMAIL_NOT_ALLOWED" ? (
-              <button
-                onClick={() => router.push("/dashboard")}
-                className="rounded-xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-bold text-white hover:bg-white/10"
-              >
-                Back to dashboard
-              </button>
+              <div className="w-full max-w-md space-y-3 rounded-3xl border border-white/10 bg-white/[0.035] p-4 text-left">
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-zinc-300">
+                  Logged in as <span className="font-semibold text-white">{currentUserEmail || "this account"}</span>
+                </div>
+                <textarea
+                  value={accessMessage}
+                  onChange={(event) => setAccessMessage(event.target.value)}
+                  rows={3}
+                  maxLength={500}
+                  placeholder="Optional message to the admin..."
+                  className="w-full resize-none rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-[#d7ff3f]/50"
+                />
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <button
+                    onClick={() => void requestAccess()}
+                    disabled={requestingAccess}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2"
+                  >
+                    {requestingAccess ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black" /> : <Send className="h-4 w-4" />}
+                    Request Access
+                  </button>
+                  <button
+                    onClick={() => router.push("/dashboard")}
+                    className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-bold text-white hover:bg-white/10"
+                  >
+                    Dashboard
+                  </button>
+                </div>
+                <button
+                  onClick={() => router.push(loginUrl)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 px-4 py-3 text-sm font-semibold text-zinc-300 hover:bg-white/10 hover:text-white"
+                >
+                  <LogIn className="h-4 w-4" />
+                  Switch Account
+                </button>
+              </div>
             ) : null}
           </div>
         ) : (
