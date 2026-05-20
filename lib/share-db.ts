@@ -24,6 +24,7 @@ export type ShareLink = {
   downloadEnabled: boolean;
   previewEnabled: boolean;
   canDownload: boolean;
+  pinned: boolean;
   note?: string;
   disabledAt?: string | null;
   createdAt: string;
@@ -53,11 +54,12 @@ function uniqueEmails(emails: string[]) {
   );
 }
 
-function normalizePermission(
-  permission?: SharePermission,
-  canDownload?: boolean
-): SharePermission {
-  if (permission) return permission;
+function normalizePermission(permission?: SharePermission, canDownload?: boolean): SharePermission {
+  if (permission === "VIEW_ONLY") return "VIEW_ONLY";
+  if (permission === "DOWNLOAD") return "DOWNLOAD";
+  if (permission === "UPLOAD") return "UPLOAD";
+  if (permission === "FULL") return "FULL";
+
   return canDownload === false ? "VIEW_ONLY" : "DOWNLOAD";
 }
 
@@ -89,6 +91,7 @@ function normalizeShare(raw: Partial<ShareLink> & { canDownload?: boolean }): Sh
     downloadEnabled,
     previewEnabled: raw.previewEnabled ?? true,
     canDownload: downloadEnabled,
+    pinned: Boolean(raw.pinned),
     note: raw.note || "",
     disabledAt: raw.disabledAt || null,
     createdAt: raw.createdAt || now,
@@ -105,6 +108,7 @@ export async function readShareLinks(): Promise<ShareLink[]> {
     .catch(() => fs.readFile(legacyDbPath(), "utf8").catch(() => "[]"));
 
   const data = JSON.parse(raw) as Array<Partial<ShareLink>>;
+
   return Array.isArray(data) ? data.map(normalizeShare) : [];
 }
 
@@ -126,6 +130,7 @@ export async function createShareLink(input: {
   allowedEmails?: string[];
   permission?: SharePermission;
   ownerUserId?: string | "admin";
+  pinned?: boolean;
 }) {
   const links = await readShareLinks();
   const now = new Date().toISOString();
@@ -150,6 +155,7 @@ export async function createShareLink(input: {
     downloadEnabled,
     previewEnabled: input.previewEnabled ?? true,
     canDownload: downloadEnabled,
+    pinned: Boolean(input.pinned),
     note: input.note?.trim() || "",
     disabledAt: null,
     createdAt: now,
