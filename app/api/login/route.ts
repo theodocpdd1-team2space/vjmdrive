@@ -5,6 +5,7 @@ import {
   ensureAdminUser,
   findUserByEmail,
   setSessionCookies,
+  updateUser,
   verifyPassword,
 } from "@/lib/auth";
 
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
     user = result.user;
   } else {
     const admin = await ensureAdminUser();
-    const adminPassword = process.env.ADMIN_PASSWORD || process.env.DRIVE_PASSWORD;
+    const adminPassword = process.env.DRIVE_PASSWORD || process.env.ADMIN_PASSWORD;
     const matchesHash = await verifyPassword(password, admin.passwordHash);
     const matchesLegacy = Boolean(adminPassword && password === adminPassword);
     if (matchesHash || matchesLegacy) user = admin;
@@ -41,6 +42,7 @@ export async function POST(req: Request) {
   }
 
   const response = NextResponse.json({ ok: true, user: { role: user.role, email: user.email } });
+  await updateUser(user.id, { lastLoginAt: new Date().toISOString() });
   setSessionCookies(response, await createSessionToken(user), user.role);
 
   return response;

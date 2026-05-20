@@ -1,5 +1,9 @@
 import fs from "fs/promises";
+import { createWriteStream } from "fs";
 import path from "path";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
+import type { ReadableStream as NodeReadableStream } from "stream/web";
 import { NextRequest, NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
 import { ensureUniquePath, resolveExisting } from "@/lib/file-ops";
@@ -25,7 +29,7 @@ export async function POST(req: NextRequest) {
     for (const file of files) {
       const safeName = assertSafeName(file.name);
       const destination = await ensureUniquePath(target.absolutePath, safeName);
-      await fs.writeFile(destination, Buffer.from(await file.arrayBuffer()));
+      await pipeline(Readable.fromWeb(file.stream() as unknown as NodeReadableStream), createWriteStream(destination));
       uploaded.push(path.posix.join(target.relativePath, path.basename(destination)));
     }
 

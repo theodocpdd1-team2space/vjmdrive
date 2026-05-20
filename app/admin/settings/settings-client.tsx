@@ -115,6 +115,9 @@ export function AdminSettingsClient({
             <span>Next scan: {settings.previewCache.nextScanAt || "-"}</span>
             <span>Status: {settings.previewCache.running ? "running" : "idle"}</span>
           </div>
+          <p className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-zinc-500">
+            Auto cache scheduler foundation ready. Use Run Scan Now for an immediate background scan.
+          </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button onClick={save} disabled={loading} className="inline-flex items-center gap-2 rounded-lg bg-[#d7ff3f] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50">
               <Save className="h-4 w-4" />

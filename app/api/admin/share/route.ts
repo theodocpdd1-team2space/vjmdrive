@@ -34,9 +34,12 @@ export async function POST(req: NextRequest) {
     const appUrl = getAppUrl();
     const shareUrl = `${appUrl}/share/${link.token}`;
 
+    let inviteAttempted = false;
+    const sent: string[] = [];
+    const failed: string[] = [];
     if (link.visibility === "PRIVATE_EMAILS" && link.allowedEmails.length) {
+      inviteAttempted = true;
       const admin = await getCurrentUser();
-      const sent: string[] = [];
       for (const email of link.allowedEmails) {
         const template = shareAccessTemplate({
           sharedBy: admin?.email || "VJM Drive admin",
@@ -47,11 +50,18 @@ export async function POST(req: NextRequest) {
         });
         const result = await sendEmail({ to: email, ...template });
         if (result.ok) sent.push(email);
+        else failed.push(email);
       }
       if (sent.length) await updateShareLink(link.token, { invitedEmails: sent });
     }
 
-    return NextResponse.json({ ok: true, token: link.token, url: `/share/${link.token}`, link });
+    return NextResponse.json({
+      ok: true,
+      token: link.token,
+      url: `/share/${link.token}`,
+      link,
+      invite: { attempted: inviteAttempted, sent, failed },
+    });
   } catch (caught) {
     return NextResponse.json(
       { ok: false, message: caught instanceof Error ? caught.message : "Create share failed" },

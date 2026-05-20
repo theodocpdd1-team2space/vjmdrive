@@ -12,6 +12,7 @@ export const SESSION_COOKIE = "vjm_drive_session";
 export const DEFAULT_USER_QUOTA_BYTES = 1024 * 1024 * 1024;
 
 export type UserRole = "ADMIN" | "USER";
+export type UserPlan = "Free" | "Personal" | "Pro" | "Vendor" | "Business" | "Custom";
 
 export type DriveUser = {
   id: string;
@@ -21,7 +22,10 @@ export type DriveUser = {
   passwordHash: string;
   role: UserRole;
   quotaBytes: number | null;
+  plan?: UserPlan;
   emailVerified: boolean;
+  disabled?: boolean;
+  lastLoginAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -108,7 +112,10 @@ export async function createUser(input: {
     passwordHash: await hashPassword(input.password),
     role: input.role || "USER",
     quotaBytes: input.quotaBytes === undefined ? DEFAULT_USER_QUOTA_BYTES : input.quotaBytes,
+    plan: "Free",
     emailVerified: Boolean(input.emailVerified),
+    disabled: false,
+    lastLoginAt: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -163,7 +170,10 @@ export async function ensureAdminUser() {
       passwordHash,
       role: "ADMIN",
       quotaBytes: null,
+      plan: "Custom",
       emailVerified: true,
+      disabled: false,
+      lastLoginAt: users[existingIndex].lastLoginAt || null,
       updatedAt: now,
     };
     await writeUsers(users);
@@ -179,7 +189,10 @@ export async function ensureAdminUser() {
     passwordHash,
     role: "ADMIN",
     quotaBytes: null,
+    plan: "Custom",
     emailVerified: true,
+    disabled: false,
+    lastLoginAt: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -302,6 +315,7 @@ export async function requireAdminUser() {
 export async function authenticateUser(email: string, password: string) {
   const user = await findUserByEmail(email);
   if (!user) return { ok: false as const, message: "Email atau password salah." };
+  if (user.disabled) return { ok: false as const, message: "Account disabled." };
   if (!(await verifyPassword(password, user.passwordHash))) {
     return { ok: false as const, message: "Email atau password salah." };
   }

@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminSettingsPage() {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/admin");
   if (user.role !== "ADMIN") redirect("/dashboard");
 
   const settings = await readSettings();

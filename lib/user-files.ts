@@ -1,5 +1,9 @@
 import fs from "fs/promises";
+import { createWriteStream } from "fs";
 import path from "path";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
+import type { ReadableStream as NodeReadableStream } from "stream/web";
 import { ensureUniquePath, moveItems } from "./file-ops";
 import { assertRealPathInsideRoot, assertSafeName, isDriveSubPath, normalizeDrivePath, resolveSafePath } from "./safe-path";
 import { ensureUserStorage, userStorageRelativePath, userStoragePath, type DriveUser } from "./auth";
@@ -35,7 +39,7 @@ export async function uploadUserFiles(user: DriveUser, targetPath: string, files
     await assertUserQuota(user, file.size);
     const safeName = assertSafeName(file.name);
     const destination = await ensureUniquePath(target.absolutePath, safeName);
-    await fs.writeFile(destination, Buffer.from(await file.arrayBuffer()));
+    await pipeline(Readable.fromWeb(file.stream() as unknown as NodeReadableStream), createWriteStream(destination));
     uploaded.push(path.posix.relative(userStorageRelativePath(user.id), path.posix.join(fullTargetPath, path.basename(destination))));
   }
   return uploaded;

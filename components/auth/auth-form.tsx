@@ -8,8 +8,8 @@ import { HardDrive, Loader2 } from "lucide-react";
 type Mode = "login" | "signup" | "forgot" | "reset";
 
 const titles = {
-  login: "Login to VJM Drive",
-  signup: "Create your VJM Drive account",
+  login: "Login to driveOne",
+  signup: "Create your driveOne account",
   forgot: "Reset your password",
   reset: "Set a new password",
 };
@@ -90,9 +90,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-[#d7ff3f] text-black">
               <HardDrive className="h-6 w-6" />
             </div>
-            <p className="text-sm font-semibold text-[#d7ff3f]">VJMRTIM</p>
-            <h1 className="mt-2 text-4xl font-semibold text-white md:text-5xl">VJM Drive</h1>
-            <p className="mt-4 max-w-lg text-zinc-400">Private visual asset drive by VJMRTIM.</p>
+            <p className="text-sm font-semibold text-[#d7ff3f]">by VJMRTIM</p>
+            <h1 className="mt-2 text-4xl font-semibold text-white md:text-5xl">driveOne</h1>
+            <p className="mt-4 max-w-lg text-zinc-400">Private cloud drive for creators, vendors, and digital products.</p>
           </div>
           <form onSubmit={submit} className="rounded-lg border border-white/10 bg-white/[0.04] p-5">
             <h2 className="text-xl font-semibold text-white">{titles[mode]}</h2>
@@ -128,6 +128,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
             <div className="mt-5 flex flex-wrap gap-3 text-sm text-zinc-400">
               {mode !== "login" ? <Link href="/login" className="text-[#d7ff3f]">Login</Link> : null}
               {mode !== "signup" ? <Link href="/signup" className="text-[#d7ff3f]">Sign up</Link> : null}
+              {mode === "login" ? <Link href="/admin" className="text-zinc-500 hover:text-[#d7ff3f]">Admin Login</Link> : null}
               {mode !== "forgot" && mode !== "reset" ? <Link href="/forgot-password" className="text-[#d7ff3f]">Forgot password</Link> : null}
             </div>
           </form>

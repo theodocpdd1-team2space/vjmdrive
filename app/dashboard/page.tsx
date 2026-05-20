@@ -5,6 +5,7 @@ import { findUserById, getCurrentUser, userStoragePath, userStorageRelativePath 
 import { listDriveFolder } from "@/lib/drive-list";
 import { readShareLinks } from "@/lib/share-db";
 import { directorySize, storageSummary } from "@/lib/storage";
+import { LogoutButton } from "@/components/common/logout-button";
 
 export const dynamic = "force-dynamic";
 
@@ -40,13 +41,13 @@ export default async function DashboardPage() {
               <HardDrive className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-[#d7ff3f]">VJMRTIM</p>
-              <h1 className="font-semibold text-white">VJM Drive</h1>
+              <p className="text-xs font-semibold text-[#d7ff3f]">by VJMRTIM</p>
+              <h1 className="font-semibold text-white">driveOne</h1>
             </div>
           </div>
           <nav className="grid gap-1 text-sm text-zinc-400">
             <a className="rounded-lg bg-[#d7ff3f] px-3 py-2 text-black">Dashboard</a>
-            <a className="rounded-lg px-3 py-2 hover:bg-white/10 hover:text-white">My Drive</a>
+            <Link href="/drive" className="rounded-lg px-3 py-2 hover:bg-white/10 hover:text-white">My Drive</Link>
             <a className="rounded-lg px-3 py-2 hover:bg-white/10 hover:text-white">Shared with Me</a>
             <a className="rounded-lg px-3 py-2 hover:bg-white/10 hover:text-white">Recent</a>
             <a className="rounded-lg px-3 py-2 hover:bg-white/10 hover:text-white">Account</a>
@@ -58,9 +59,7 @@ export default async function DashboardPage() {
               <p className="text-sm text-[#d7ff3f]">{user.email}</p>
               <h2 className="mt-1 text-2xl font-semibold text-white">Dashboard</h2>
             </div>
-            <form action="/api/logout" method="post">
-              <button className="rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10">Logout</button>
-            </form>
+            <LogoutButton className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10 disabled:opacity-50" />
           </div>
 
           <div className="mt-6 grid gap-3 md:grid-cols-3">
@@ -83,10 +82,10 @@ export default async function DashboardPage() {
             <section className="rounded-lg border border-white/10 bg-white/[0.03]">
               <div className="flex items-center justify-between border-b border-white/10 p-4">
                 <h3 className="font-semibold">My files</h3>
-                <button className="inline-flex items-center gap-2 rounded-lg bg-[#d7ff3f] px-3 py-2 text-sm font-semibold text-black">
+                <Link href="/drive" className="inline-flex items-center gap-2 rounded-lg bg-[#d7ff3f] px-3 py-2 text-sm font-semibold text-black">
                   <Upload className="h-4 w-4" />
                   Upload
-                </button>
+                </Link>
               </div>
               <div className="divide-y divide-white/10">
                 {myFiles.items.slice(0, 8).map((item) => (
