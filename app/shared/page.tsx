@@ -14,7 +14,7 @@ function normalizeEmail(value: string) {
 export default async function SharedWithMePage() {
   const session = await getCurrentUser();
 
-  if (!session) redirect("/login");
+  if (!session) redirect("/login?next=/shared");
   if (session.role === "ADMIN") redirect("/admin");
 
   const user = await findUserById(session.id);

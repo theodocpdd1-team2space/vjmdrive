@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAppUrl, getCurrentUser, isAdmin } from "@/lib/auth";
-import { createShareLink, updateShareLink, type SharePermission, type ShareVisibility } from "@/lib/share-db";
+import { createOrReuseShareLink, updateShareLink, type SharePermission, type ShareVisibility } from "@/lib/share-db";
 import { sendEmail } from "@/lib/email/resend";
 import { shareAccessTemplate } from "@/lib/email/templates";
 import { resolveExisting } from "@/lib/file-ops";
@@ -30,17 +30,17 @@ export async function POST(req: NextRequest) {
 
   try {
     await resolveExisting(rootPath);
-    const link = await createShareLink({ rootPath, name, canDownload, expiresAt, note, visibility, allowedEmails, permission });
+    const { link, reused, newEmails } = await createOrReuseShareLink({ rootPath, name, canDownload, expiresAt, note, visibility, allowedEmails, permission });
     const appUrl = getAppUrl();
     const shareUrl = `${appUrl}/share/${link.token}`;
 
     let inviteAttempted = false;
     const sent: string[] = [];
     const failed: string[] = [];
-    if (link.visibility === "PRIVATE_EMAILS" && link.allowedEmails.length) {
+    if (link.visibility === "PRIVATE_EMAILS" && newEmails.length) {
       inviteAttempted = true;
       const admin = await getCurrentUser();
-      for (const email of link.allowedEmails) {
+      for (const email of newEmails) {
         const template = shareAccessTemplate({
           sharedBy: admin?.email || "VJM Drive admin",
           shareTitle: link.title,
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
         if (result.ok) sent.push(email);
         else failed.push(email);
       }
-      if (sent.length) await updateShareLink(link.token, { invitedEmails: sent });
+      if (sent.length) await updateShareLink(link.token, { invitedEmails: Array.from(new Set([...link.invitedEmails, ...sent])) });
     }
 
     return NextResponse.json({
@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
       token: link.token,
       url: `/share/${link.token}`,
       link,
+      reused,
       invite: { attempted: inviteAttempted, sent, failed },
     });
   } catch (caught) {

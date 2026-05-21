@@ -3,7 +3,7 @@ import path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
 import { moveItems } from "@/lib/file-ops";
-import { getCacheRoot } from "@/lib/preview-cache";
+import { getCacheRoot, migratePreviewCacheForMoves } from "@/lib/preview-cache";
 import { normalizeDrivePath } from "@/lib/safe-path";
 
 export const runtime = "nodejs";
@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
 
-  const paths = Array.isArray(body?.paths)
+  const paths: string[] = Array.isArray(body?.paths)
     ? body.paths
         .filter((item: unknown) => typeof item === "string")
         .map((item: string) => normalizeRel(item))
@@ -218,15 +218,16 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const movePlan = buildMovePlan(paths, targetFolder);
-
     const moved = await moveItems(paths, targetFolder);
+    const movePlan = paths.map((oldPath, index) => ({ oldPath, newPath: moved[index] || oldPath }));
 
+    const cache = await migratePreviewCacheForMoves(movePlan);
     const metadata = await updateMoveRelatedMetadata(movePlan);
 
     return NextResponse.json({
       ok: true,
       moved,
+      cache,
       metadata,
     });
   } catch (caught) {

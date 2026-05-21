@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs/promises";
 import type { Stats } from "fs";
 import { getExtension } from "./file-utils";
+import { assertRealPathInsideRoot, resolveSafePath } from "./safe-path";
 
 export type PreviewStatus = "native" | "ready" | "missing" | "unsupported";
 
@@ -103,6 +104,72 @@ async function exists(filePath: string) {
   } catch {
     return false;
   }
+}
+
+async function copyCacheIfSafe(sourcePath: string, destinationPath: string) {
+  if (!(await exists(sourcePath))) return false;
+  if (await exists(destinationPath)) return false;
+  await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+  await fs.copyFile(sourcePath, destinationPath);
+  return true;
+}
+
+async function listMovedFiles(newRelativePath: string) {
+  const safePath = resolveSafePath(newRelativePath);
+  await assertRealPathInsideRoot(safePath.root, safePath.absolutePath);
+  const rootStat = await fs.stat(safePath.absolutePath).catch(() => null);
+  if (!rootStat) return [];
+  if (rootStat.isFile()) return [{ relativePath: safePath.relativePath, stat: rootStat }];
+  if (!rootStat.isDirectory()) return [];
+
+  const files: Array<{ relativePath: string; stat: Stats }> = [];
+
+  async function walk(absoluteFolder: string, relativeFolder: string) {
+    const entries = await fs.readdir(absoluteFolder, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+      const absolutePath = path.join(absoluteFolder, entry.name);
+      const relativePath = path.posix.join(relativeFolder, entry.name);
+      const stat = await fs.stat(absolutePath).catch(() => null);
+      if (!stat) continue;
+      if (entry.isDirectory()) await walk(absolutePath, relativePath);
+      else if (entry.isFile()) files.push({ relativePath, stat });
+    }
+  }
+
+  await walk(safePath.absolutePath, safePath.relativePath);
+  return files;
+}
+
+export async function migratePreviewCacheForMoves(moves: Array<{ oldPath: string; newPath: string }>) {
+  const summary = {
+    migratedPreviewFiles: 0,
+    migratedThumbnailFiles: 0,
+    skippedExistingFiles: 0,
+  };
+
+  for (const move of moves) {
+    const files = await listMovedFiles(move.newPath);
+    for (const file of files) {
+      const suffix = file.relativePath === move.newPath ? "" : file.relativePath.slice(move.newPath.length + 1);
+      const oldRelativePath = suffix ? path.posix.join(move.oldPath, suffix) : move.oldPath;
+      const oldCache = getCachePaths(oldRelativePath, file.stat);
+      const newCache = getCachePaths(file.relativePath, file.stat);
+
+      for (const [sourcePath, destinationPath, kind] of [
+        [oldCache.previewPath, newCache.previewPath, "preview"],
+        [oldCache.thumbnailJpgPath, newCache.thumbnailJpgPath, "thumbnail"],
+        [oldCache.thumbnailWebpPath, newCache.thumbnailWebpPath, "thumbnail"],
+      ] as const) {
+        const copied = await copyCacheIfSafe(sourcePath, destinationPath);
+        if (copied && kind === "preview") summary.migratedPreviewFiles += 1;
+        if (copied && kind === "thumbnail") summary.migratedThumbnailFiles += 1;
+        if (!copied && (await exists(sourcePath)) && (await exists(destinationPath))) summary.skippedExistingFiles += 1;
+      }
+    }
+  }
+
+  return summary;
 }
 
 export async function findPreviewCachePath(relativePath: string, stat: Pick<Stats, "size" | "mtimeMs">) {

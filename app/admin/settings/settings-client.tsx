@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Loader2, Mail, Palette, RotateCw, Save, Server, Type } from "lucide-react";
-import { AdminShell } from "@/components/layout/admin-shell";
 import type { DriveSettings } from "@/lib/settings";
 
 export function AdminSettingsClient({
@@ -63,7 +62,7 @@ export function AdminSettingsClient({
   }
 
   return (
-    <AdminShell title="Settings" subtitle="System, branding, email, storage, and preview cache settings.">
+    <>
       <div className="mx-auto max-w-5xl space-y-4">
         {notice ? <p className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm">{notice}</p> : null}
 
@@ -200,7 +199,7 @@ export function AdminSettingsClient({
           </div>
         </section>
       </div>
-    </AdminShell>
+    </>
   );
 }
 

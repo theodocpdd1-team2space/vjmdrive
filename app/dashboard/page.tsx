@@ -22,7 +22,7 @@ function isActiveShare(share: { disabledAt?: string | null; expiresAt?: string |
 export default async function DashboardPage() {
   const session = await getCurrentUser();
 
-  if (!session) redirect("/login");
+  if (!session) redirect("/login?next=/dashboard");
   if (session.role === "ADMIN") redirect("/admin");
 
   const user = await findUserById(session.id);

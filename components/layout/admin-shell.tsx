@@ -2,16 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import {
   BarChart3,
   Folder,
   Link2,
   ListChecks,
   LogOut,
+  Menu,
   RefreshCw,
   Settings,
   Shield,
   Users,
+  X,
 } from "lucide-react";
 import { logoutAndRedirect } from "@/components/common/logout";
 
@@ -35,11 +38,25 @@ export function AdminShell({
   subtitle?: string;
 }) {
   const pathname = usePathname();
+  const [open, setOpen] = useState(false);
 
   return (
     <main className="min-h-screen bg-[#090a0d] text-zinc-100">
-      <aside className="fixed inset-y-0 left-0 z-50 flex w-[290px] flex-col border-r border-white/10 bg-[#08090d] px-4 py-5">
-        <Link href="/admin" className="flex items-center gap-3">
+      {open ? (
+        <button
+          aria-label="Close sidebar overlay"
+          onClick={() => setOpen(false)}
+          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden"
+        />
+      ) : null}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-[290px] flex-col border-r border-white/10 bg-[#08090d] px-4 py-5 transition-transform duration-300 lg:translate-x-0 ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex items-center justify-between gap-3">
+        <Link href="/admin" className="flex items-center gap-3" onClick={() => setOpen(false)}>
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#d7ff3f] text-black">
             <Folder className="h-5 w-5" />
           </div>
@@ -53,6 +70,14 @@ export function AdminShell({
             </p>
           </div>
         </Link>
+          <button
+            onClick={() => setOpen(false)}
+            className="rounded-xl border border-white/10 p-2 text-zinc-400 hover:bg-white/10 hover:text-white lg:hidden"
+            aria-label="Close sidebar"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
 
         <nav className="mt-9 space-y-1">
           {navItems.map((item) => {
@@ -66,6 +91,7 @@ export function AdminShell({
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={() => setOpen(false)}
                 className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition ${
                   active
                     ? "bg-[#d7ff3f] text-black"
@@ -90,9 +116,18 @@ export function AdminShell({
         <p className="mt-5 text-xs text-zinc-600">driveOne Admin</p>
       </aside>
 
-      <section className="min-h-screen pl-[290px]">
+      <section className="min-h-screen lg:pl-[290px]">
         {title || subtitle ? (
           <header className="border-b border-white/10 bg-[#090a0d] px-5 py-4">
+            <div className="flex items-start gap-3">
+              <button
+                onClick={() => setOpen(true)}
+                className="mt-1 rounded-xl border border-white/10 p-2 text-zinc-300 hover:bg-white/10 lg:hidden"
+                aria-label="Open sidebar"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+              <div className="min-w-0">
             {title ? (
               <>
                 <p className="text-xs font-black uppercase tracking-[0.24em] text-[#d7ff3f]">
@@ -109,6 +144,8 @@ export function AdminShell({
                 {subtitle}
               </p>
             ) : null}
+              </div>
+            </div>
           </header>
         ) : null}
 

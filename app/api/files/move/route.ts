@@ -5,6 +5,7 @@ import { moveItems } from "@/lib/file-ops";
 import { moveUserItems } from "@/lib/user-files";
 import { normalizeDrivePath } from "@/lib/safe-path";
 import { updateMoveRelatedMetadata } from "@/lib/path-metadata";
+import { migratePreviewCacheForMoves } from "@/lib/preview-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,11 +52,13 @@ export async function POST(req: NextRequest) {
     if (session.role === "ADMIN") {
       const moved = await moveItems(items, targetFolder);
       const movePlan = items.map((oldPath, index) => ({ oldPath, newPath: moved[index] || oldPath }));
+      const cache = await migratePreviewCacheForMoves(movePlan);
       const metadata = await updateMoveRelatedMetadata(movePlan);
 
       return NextResponse.json({
         ok: true,
         moved,
+        cache,
         metadata,
       });
     }
@@ -78,11 +81,13 @@ export async function POST(req: NextRequest) {
       oldPath: path.posix.join(userRoot, oldPath),
       newPath: path.posix.join(userRoot, moved[index] || oldPath),
     }));
+    const cache = await migratePreviewCacheForMoves(movePlan);
     const metadata = await updateMoveRelatedMetadata(movePlan);
 
     return NextResponse.json({
       ok: true,
       moved,
+      cache,
       metadata,
     });
   } catch (caught) {

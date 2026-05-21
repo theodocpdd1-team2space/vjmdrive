@@ -52,7 +52,7 @@ const navItems = [
   { href: "/dashboard#account", label: "Account", icon: User },
 ];
 
-export function UserDriveClient() {
+export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
   const [items, setItems] = useState<DriveItem[]>([]);
   const [path, setPath] = useState("");
   const [loading, setLoading] = useState(true);
@@ -152,6 +152,132 @@ export function UserDriveClient() {
   }, [items, query]);
 
   const usedBytesDisplayed = filteredItems.reduce((total, item) => total + (item.type === "folder" ? 0 : item.bytes || 0), 0);
+
+  if (embedded) {
+    return (
+      <>
+        <div className="mx-auto max-w-7xl space-y-5">
+          <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+              <Search className="h-4 w-4 shrink-0 text-zinc-500" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search files..."
+                className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-600"
+              />
+            </div>
+            <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black transition hover:bg-[#c8ef34]">
+              <Upload className="h-4 w-4" />
+              Upload
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                disabled={uploading}
+                onChange={(event) => void upload(event.target.files)}
+              />
+            </label>
+          </div>
+
+          <section className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/20">
+              <p className="text-sm text-zinc-500">Current folder</p>
+              <p className="mt-2 truncate text-lg font-black text-white">{path || "Home"}</p>
+            </div>
+            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/20">
+              <p className="text-sm text-zinc-500">Items shown</p>
+              <p className="mt-2 text-lg font-black text-white">{filteredItems.length}</p>
+            </div>
+            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/20">
+              <p className="text-sm text-zinc-500">Displayed size</p>
+              <p className="mt-2 text-lg font-black text-white">{formatBytes(usedBytesDisplayed)}</p>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-3">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <nav className="flex flex-wrap items-center gap-1 text-sm">
+                <button
+                  onClick={() => void load("")}
+                  className="inline-flex items-center gap-2 rounded-2xl px-3 py-2 font-bold text-white hover:bg-white/10"
+                >
+                  <Home className="h-4 w-4 text-[#d7ff3f]" />
+                  Home
+                </button>
+                {breadcrumbs.map((crumb, index) => (
+                  <div key={`${crumb}-${index}`} className="flex items-center gap-1">
+                    <ChevronRight className="h-4 w-4 text-zinc-600" />
+                    <button
+                      onClick={() => void load(breadcrumbs.slice(0, index + 1).join("/"))}
+                      className="max-w-[160px] truncate rounded-2xl px-3 py-2 text-zinc-300 hover:bg-white/10"
+                    >
+                      {crumb}
+                    </button>
+                  </div>
+                ))}
+              </nav>
+              <div className="flex items-center gap-2 text-xs text-zinc-500">
+                <span className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">Login protected</span>
+                <span className="rounded-xl border border-[#d7ff3f]/20 bg-[#d7ff3f]/10 px-3 py-2 text-[#d7ff3f]">1 GB Free</span>
+              </div>
+            </div>
+          </section>
+
+          {notice ? (
+            <div className="rounded-2xl border border-[#d7ff3f]/20 bg-[#d7ff3f]/10 px-4 py-3 text-sm font-medium text-[#d7ff3f]">
+              {notice}
+            </div>
+          ) : null}
+
+          <FileList
+            loading={loading}
+            filteredItems={filteredItems}
+            viewMode={viewMode}
+            setViewMode={setViewMode}
+            load={load}
+            setPreviewItem={setPreviewItem}
+            setShareTarget={(item) => {
+              setShareTarget(item);
+              setShareResult(null);
+            }}
+          />
+        </div>
+
+        <UserShareModal
+          item={shareTarget}
+          result={shareResult}
+          onClose={() => {
+            setShareTarget(null);
+            setShareResult(null);
+          }}
+          onCreated={(result) => setShareResult(result)}
+          onNotice={setNotice}
+        />
+
+        <PreviewModal
+          item={previewItem}
+          open={previewItem !== null}
+          canDownload
+          onClose={() => setPreviewItem(null)}
+          onCopy={(text) => {
+            void navigator.clipboard.writeText(text).catch(() => undefined);
+            setNotice("Link copied.");
+          }}
+          onShare={(itemPath) => {
+            const item = items.find((candidate) => candidate.path === itemPath) || null;
+            setPreviewItem(null);
+            setShareTarget(item);
+            setShareResult(null);
+          }}
+        />
+
+        {uploading ? (
+          <UploadProgress progress={progress} />
+        ) : null}
+      </>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[#08090d] text-zinc-100">
@@ -467,6 +593,125 @@ export function UserDriveClient() {
         </div>
       ) : null}
     </main>
+  );
+}
+
+function FileList({
+  loading,
+  filteredItems,
+  viewMode,
+  setViewMode,
+  load,
+  setPreviewItem,
+  setShareTarget,
+}: {
+  loading: boolean;
+  filteredItems: DriveItem[];
+  viewMode: ViewMode;
+  setViewMode: (value: ViewMode) => void;
+  load: (path: string) => Promise<void>;
+  setPreviewItem: (item: DriveItem) => void;
+  setShareTarget: (item: DriveItem) => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/20">
+      <div className="flex flex-col gap-3 border-b border-white/10 p-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-sm font-black text-white">Files</p>
+          <p className="mt-1 text-xs text-zinc-500">Open, preview, download, or share your own files.</p>
+        </div>
+        <ViewToggle value={viewMode} onChange={setViewMode} />
+      </div>
+      {loading ? (
+        <div className="flex h-72 items-center justify-center gap-2 text-zinc-400">
+          <Loader2 className="h-5 w-5 animate-spin text-[#d7ff3f]" />
+          Loading drive...
+        </div>
+      ) : null}
+
+      {!loading && filteredItems.length === 0 ? (
+        <div className="flex h-72 flex-col items-center justify-center gap-3 p-8 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-3xl border border-white/10 bg-white/[0.04] text-[#d7ff3f]">
+            <HardDrive className="h-7 w-7" />
+          </div>
+          <div>
+            <p className="font-bold text-white">No files here</p>
+            <p className="mt-1 text-sm text-zinc-500">Upload your first file to this folder.</p>
+          </div>
+        </div>
+      ) : null}
+
+      {!loading && filteredItems.length > 0 ? (
+        <div className={viewMode === "grid" ? "grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3" : "divide-y divide-white/10"}>
+          {filteredItems.map((item) => (
+            <div
+              key={item.path}
+              className={viewMode === "grid"
+                ? "rounded-3xl border border-white/10 bg-black/20 p-3 transition hover:bg-white/[0.05]"
+                : "grid w-full grid-cols-[42px_minmax(0,1fr)] items-center gap-3 px-4 py-3 text-left transition hover:bg-white/[0.04] md:grid-cols-[42px_minmax(0,1fr)_120px_120px_250px]"}
+            >
+              <FileThumbnail item={item} size={viewMode === "grid" ? "grid" : "row"} />
+
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-white">{item.name}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                  <span>{typeLabel(item)}</span>
+                  <PreviewStatusBadge item={item} />
+                </div>
+              </div>
+
+              <span className={viewMode === "grid" ? "mt-3 block text-xs text-zinc-500" : "hidden text-xs text-zinc-500 md:block"}>
+                {item.size || formatBytes(item.bytes || 0)}
+              </span>
+
+              <span className={viewMode === "grid" ? "mt-3 block text-xs text-zinc-600" : "hidden text-xs text-zinc-600 md:block"}>
+                {new Date(item.modified).toLocaleString("id-ID")}
+              </span>
+
+              <div className={viewMode === "grid" ? "mt-4 flex flex-wrap gap-2" : "col-span-2 flex flex-wrap gap-2 md:col-span-1 md:justify-end"}>
+                <button
+                  onClick={() => (item.type === "folder" ? void load(item.path) : setPreviewItem(item))}
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
+                >
+                  {item.type === "folder" ? <Folder className="h-4 w-4" /> : <File className="h-4 w-4" />}
+                  {item.type === "folder" ? "Open" : "Preview"}
+                </button>
+                {item.directDownloadUrl ? (
+                  <a href={item.directDownloadUrl} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white">
+                    <Download className="h-4 w-4" />
+                    Download
+                  </a>
+                ) : null}
+                <button
+                  onClick={() => setShareTarget(item)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#d7ff3f] px-3 py-2 text-xs font-black text-black hover:bg-[#c8ef34]"
+                >
+                  <Share2 className="h-4 w-4" />
+                  Share
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function UploadProgress({ progress }: { progress: number }) {
+  return (
+    <div className="fixed inset-x-3 bottom-3 z-[70] rounded-3xl border border-white/10 bg-[#101217]/95 p-4 shadow-2xl shadow-black/40 backdrop-blur md:left-auto md:right-6 md:w-96">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-black text-white">Uploading files</p>
+          <p className="mt-1 text-xs text-zinc-500">Please keep this page open.</p>
+        </div>
+        <span className="text-sm font-black text-[#d7ff3f]">{progress}%</span>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+        <div className="h-full rounded-full bg-[#d7ff3f] transition-all" style={{ width: `${progress}%` }} />
+      </div>
+    </div>
   );
 }
 

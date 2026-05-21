@@ -3,7 +3,7 @@ import { findUserById, getAppUrl, getCurrentUser } from "@/lib/auth";
 import { shareAccessTemplate } from "@/lib/email/templates";
 import { sendEmail } from "@/lib/email/resend";
 import { resolveExisting } from "@/lib/file-ops";
-import { createShareLink, updateShareLink, type SharePermission, type ShareVisibility } from "@/lib/share-db";
+import { createOrReuseShareLink, updateShareLink, type SharePermission, type ShareVisibility } from "@/lib/share-db";
 import { resolveUserDrivePath } from "@/lib/user-files";
 
 export const runtime = "nodejs";
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     const fullRootPath = resolveUserDrivePath(user.id, rootPath);
     await resolveExisting(fullRootPath);
 
-    const link = await createShareLink({
+    const { link, reused, newEmails } = await createOrReuseShareLink({
       rootPath: fullRootPath,
       title,
       note,
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
     const failed: string[] = [];
 
     if (visibility === "PRIVATE_EMAILS") {
-      for (const email of link.allowedEmails) {
+      for (const email of newEmails) {
         const template = shareAccessTemplate({
           sharedBy: user.email,
           shareTitle: link.title,
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
         if (result.ok) sent.push(email);
         else failed.push(email);
       }
-      if (sent.length) await updateShareLink(link.token, { invitedEmails: sent });
+      if (sent.length) await updateShareLink(link.token, { invitedEmails: Array.from(new Set([...link.invitedEmails, ...sent])) });
     }
 
     return NextResponse.json({
@@ -79,6 +79,7 @@ export async function POST(req: Request) {
       token: link.token,
       url: `/share/${link.token}`,
       link,
+      reused,
       invite: { sent, failed, attempted: visibility === "PRIVATE_EMAILS" && link.allowedEmails.length > 0 },
     });
   } catch (caught) {

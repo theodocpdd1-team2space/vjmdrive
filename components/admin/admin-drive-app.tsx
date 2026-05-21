@@ -173,13 +173,13 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function AdminDriveApp() {
-  const [authState, setAuthState] = useState<"checking" | "guest" | "admin">("checking");
+export default function AdminDriveApp({ embedded = false }: { embedded?: boolean }) {
+  const [authState, setAuthState] = useState<"checking" | "guest" | "admin">(embedded ? "admin" : "checking");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeView, setActiveView] = useState<AppView>("dashboard");
+  const [activeView, setActiveView] = useState<AppView>(embedded ? "drive" : "dashboard");
   const [currentPath, setCurrentPath] = useState("");
   const [items, setItems] = useState<DriveItem[]>([]);
   const [query, setQuery] = useState("");
@@ -719,6 +719,162 @@ export default function AdminDriveApp() {
           </div>
         </section>
       </main>
+    );
+  }
+
+  if (embedded) {
+    return (
+      <>
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2">
+              <Search className="h-4 w-4 shrink-0 text-zinc-500" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search current folder..."
+                className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-600"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <ViewToggle value={viewMode} onChange={setViewMode} />
+              <button onClick={() => setUploadModalOpen(true)} className="inline-flex items-center gap-2 rounded-lg bg-[#d7ff3f] px-3 py-2 text-sm font-semibold text-black">
+                <Upload className="h-4 w-4" />
+                Upload
+              </button>
+            </div>
+          </div>
+
+          {notice ? (
+            <div className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-zinc-200">
+              {notice}
+            </div>
+          ) : null}
+
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <DriveView
+              breadcrumbs={breadcrumbs}
+              currentPath={currentPath}
+              filtered={filtered}
+              displayedBytes={displayedBytes}
+              selectedPaths={selectedPaths}
+              selectedItems={selectedItems}
+              viewMode={viewMode}
+              loading={loading}
+              error={error}
+              onBreadcrumb={goBreadcrumb}
+              onSelectAll={() => setSelectedPaths(new Set(filtered.map((item) => item.path)))}
+              onClear={clearSelection}
+              onToggleView={setViewMode}
+              onToggleSelect={toggleSelect}
+              onOpenFolder={openFolder}
+              onPreview={previewItem}
+              onCreateFolder={openCreateFolderModal}
+              onUploadClick={() => setUploadModalOpen(true)}
+              onRename={openRenameModal}
+              onMove={openMoveModal}
+              onMoveItems={(paths, targetFolder) => void movePathsAction(paths, targetFolder)}
+              onDownloadSelected={downloadSelectedAction}
+              onShareSelected={shareSelectedAction}
+              onDelete={openDeleteModal}
+              onShare={openShareModal}
+              onRequestPreview={(paths) => void requestPreviewAction(paths)}
+              onCopy={copyText}
+              onRetry={() => void loadDrive(currentPath)}
+            />
+
+            <DetailPanel
+              selected={selected}
+              previewText={previewText}
+              previewLoading={previewLoading}
+              previewError={previewError}
+              videoPreviewUrl={selectedVideoPreviewUrl}
+              onCopy={copyText}
+              onRequestPreview={(path) => void requestPreviewAction([path])}
+            />
+          </div>
+        </div>
+
+        <PreviewModal
+          key={previewModalItem?.path || "admin-preview"}
+          item={previewModalItem}
+          open={previewModalItem !== null}
+          canDownload
+          isAdmin
+          onClose={() => setPreviewModalItem(null)}
+          onCopy={copyText}
+          onShare={openShareModal}
+          onRequestPreview={(path) => void requestPreviewAction([path])}
+        />
+        <ShareModal
+          key={shareTargetPath || "share-modal"}
+          targetPath={shareTargetPath}
+          result={shareResult}
+          origin={appOrigin}
+          shares={shares}
+          onClose={() => {
+            setShareTargetPath(null);
+            setShareResult(null);
+          }}
+          onCreate={createShareAction}
+          onCopy={copyText}
+          onUpdateShareEmails={updateShareAllowedEmails}
+        />
+        <UploadModal
+          open={uploadModalOpen}
+          files={uploadSelection}
+          uploading={uploading}
+          progress={uploadProgress}
+          onClose={() => {
+            if (!uploading) {
+              setUploadModalOpen(false);
+              setUploadSelection([]);
+            }
+          }}
+          onFilesChange={setUploadSelection}
+          onUpload={() => void uploadFiles(uploadSelection)}
+        />
+        <TextInputModal
+          open={folderModalOpen}
+          title="New Folder"
+          label="Folder name"
+          value={newFolderName}
+          submitLabel="Create Folder"
+          onChange={setNewFolderName}
+          onClose={() => setFolderModalOpen(false)}
+          onSubmit={() => void createFolderAction()}
+        />
+        <TextInputModal
+          open={renameTarget !== null}
+          title="Rename"
+          label="New name"
+          value={renameValue}
+          submitLabel="Rename"
+          onChange={setRenameValue}
+          onClose={() => setRenameTarget(null)}
+          onSubmit={() => void renameAction()}
+        />
+        <MoveModal
+          open={moveModalOpen}
+          count={selectedPaths.size}
+          targetFolder={moveTargetFolder}
+          onChange={setMoveTargetFolder}
+          onClose={() => setMoveModalOpen(false)}
+          onSubmit={() => void moveSelectedAction()}
+        />
+        <ConfirmModal
+          open={deleteTargets !== null}
+          title="Move to soft trash?"
+          body={`${deleteTargets?.length || 0} item(s) will be moved to cache trash. Original paths stay recoverable from the server trash folder.`}
+          confirmLabel="Move to Trash"
+          danger
+          loading={deleting}
+          onClose={() => {
+            if (!deleting) setDeleteTargets(null);
+          }}
+          onConfirm={() => void deleteSelectedAction()}
+        />
+      </>
     );
   }
 

@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { Check, Loader2, Search, X } from "lucide-react";
-import { AdminShell } from "@/components/layout/admin-shell";
 import type { ShareAccessRequest, ShareAccessRequestStatus } from "@/lib/share-access-requests";
 
 type Filter = "ALL" | ShareAccessRequestStatus;
@@ -67,7 +66,7 @@ export function AccessRequestsClient({ initialRequests }: { initialRequests: Sha
   };
 
   return (
-    <AdminShell title="Access Requests" subtitle="Approve or reject private share access requests.">
+    <>
       <div className="mx-auto max-w-7xl space-y-5">
         <header className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/[0.035] p-4 shadow-2xl shadow-black/20 md:flex-row md:items-center md:justify-between">
           <div>
@@ -149,6 +148,6 @@ export function AccessRequestsClient({ initialRequests }: { initialRequests: Sha
           </div>
         </section>
       </div>
-    </AdminShell>
+    </>
   );
 }

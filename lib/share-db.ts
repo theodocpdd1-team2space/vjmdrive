@@ -231,6 +231,48 @@ export async function createShareLink(input: {
   return link;
 }
 
+export async function createOrReuseShareLink(input: Parameters<typeof createShareLink>[0]) {
+  const links = await readShareLinks();
+  const now = new Date().toISOString();
+  const rootPath = normalizeDrivePath(input.rootPath);
+  const permission = normalizePermission(input.permission, input.canDownload);
+  const visibility = normalizeVisibility(input.visibility);
+  const incomingEmails = uniqueEmails(input.allowedEmails || []);
+  const existingIndex = links.findIndex((candidate) => {
+    if (candidate.disabledAt) return false;
+    if (candidate.expiresAt && new Date(candidate.expiresAt).getTime() < Date.now()) return false;
+    return candidate.rootPath === rootPath && candidate.visibility === visibility && candidate.permission === permission;
+  });
+
+  if (existingIndex === -1) {
+    const link = await createShareLink(input);
+    return { link, reused: false, newEmails: link.allowedEmails };
+  }
+
+  const existing = links[existingIndex];
+  const allowedEmails = uniqueEmails([...(existing.allowedEmails || []), ...incomingEmails]);
+  const newEmails = incomingEmails.filter((email) => !existing.allowedEmails.includes(email));
+  const title = (input.title || input.name || existing.title || existing.name).trim();
+  const downloadEnabled = input.downloadEnabled ?? input.canDownload ?? permission !== "VIEW_ONLY";
+
+  links[existingIndex] = normalizeShare({
+    ...existing,
+    title,
+    name: title,
+    note: input.note?.trim() || existing.note || "",
+    expiresAt: input.expiresAt === undefined ? existing.expiresAt : input.expiresAt,
+    allowedEmails,
+    downloadEnabled,
+    canDownload: downloadEnabled,
+    previewEnabled: input.previewEnabled ?? existing.previewEnabled,
+    ownerUserId: input.ownerUserId || existing.ownerUserId,
+    updatedAt: now,
+  });
+
+  await writeShareLinks(links);
+  return { link: links[existingIndex], reused: true, newEmails };
+}
+
 export async function updateShareLink(token: string, patch: Partial<ShareLink>) {
   const links = await readShareLinks();
   const index = links.findIndex((candidate) => candidate.token === token);

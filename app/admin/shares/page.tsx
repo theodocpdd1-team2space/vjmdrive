@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminSharesPage() {
   const user = await getCurrentUser();
 
-  if (!user) redirect("/login");
+  if (!user) redirect("/login?next=/admin/shares");
   if (user.role !== "ADMIN") redirect("/dashboard");
 
   const shares = await readShareLinks();

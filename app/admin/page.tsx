@@ -55,7 +55,7 @@ const cards = [
 export default async function AdminPage() {
   const user = await getCurrentUser();
 
-  if (!user) redirect("/login");
+  if (!user) redirect("/login?next=/admin");
   if (user.role !== "ADMIN") redirect("/dashboard");
 
   return (
