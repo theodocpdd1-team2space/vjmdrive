@@ -60,9 +60,18 @@ html[data-theme="light"] .drive-user-theme {
   color: #111827 !important;
 }
 
+html[data-theme="light"] .drive-user-theme > section,
+html[data-theme="light"] .drive-user-theme > section > header,
+html[data-theme="light"] .drive-user-theme > aside {
+  background-color: rgba(247, 248, 243, 0.94) !important;
+  color: #111827 !important;
+}
+
 html[data-theme="light"] .drive-user-theme .bg-\[\#08090d\],
+html[data-theme="light"] .drive-user-theme .bg-\[\#08090d\]\/90,
 html[data-theme="light"] .drive-user-theme .bg-\[\#0b0c10\]\/95,
 html[data-theme="light"] .drive-user-theme .bg-\[\#101217\],
+html[data-theme="light"] .drive-user-theme .bg-\[\#101217\]\/95,
 html[data-theme="light"] .drive-user-theme .bg-\[\#090a0f\]\/95 {
   background-color: #f7f8f3 !important;
 }

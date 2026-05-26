@@ -6,12 +6,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   CalendarClock,
+  CheckSquare,
   ChevronRight,
   Copy,
   Download,
   ExternalLink,
   File,
   Folder,
+  FolderPlus,
   HardDrive,
   Home,
   LayoutDashboard,
@@ -21,6 +23,7 @@ import {
   Search,
   Share2,
   Sparkles,
+  Square,
   Trash2,
   Upload,
   User,
@@ -32,6 +35,7 @@ import {
   formatBytes,
   PreviewModal,
   PreviewStatusBadge,
+  SelectionCheckbox,
   type DriveItem,
   type ViewMode,
   ViewToggle,
@@ -81,6 +85,11 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
   const [deleting, setDeleting] = useState(false);
   const [previewItem, setPreviewItem] = useState<DriveItem | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const [folderModalOpen, setFolderModalOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState("Please keep this page open.");
 
   const load = useCallback(async (nextPath: string) => {
     setLoading(true);
@@ -96,22 +105,28 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
     if (res.ok && data.ok) {
       setItems(data.items || []);
       setPath(data.path || "");
+      setSelectedPaths(new Set());
       return;
     }
 
     setNotice(data.message || "Failed to load drive.");
   }, []);
 
-  async function upload(files: FileList | null) {
+  async function upload(files: FileList | null, folderUpload = false) {
     if (!files?.length || uploading) return;
 
+    const selectedFiles = Array.from(files);
     const form = new FormData();
     form.set("path", path);
-    Array.from(files).forEach((file) => form.append("files", file));
+    selectedFiles.forEach((file) => {
+      form.append("files", file);
+      form.append("relativePaths", folderUpload ? (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name : "");
+    });
 
     setUploading(true);
     setProgress(0);
     setNotice("");
+    setUploadStatus(folderUpload ? `Uploading folder: 0/${selectedFiles.length} files` : `Uploading ${selectedFiles.length} file(s)`);
 
     await new Promise<void>((resolve) => {
       const xhr = new XMLHttpRequest();
@@ -126,7 +141,8 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
 
       xhr.onload = () => {
         const data = JSON.parse(xhr.responseText || "{}");
-        setNotice(xhr.status >= 400 || !data.ok ? data.message || "Upload failed." : "Upload complete.");
+        const uploadedCount = Array.isArray(data.uploaded) ? data.uploaded.length : selectedFiles.length;
+        setNotice(xhr.status >= 400 || !data.ok ? data.message || "Upload failed." : `Uploaded ${uploadedCount}/${selectedFiles.length} file(s).`);
         resolve();
       };
 
@@ -140,6 +156,72 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
 
     setUploading(false);
     setProgress(100);
+    await load(path);
+  }
+
+  function currentFolderItem(): DriveItem {
+    return {
+      name: path || "Home",
+      path,
+      type: "folder",
+      extension: "",
+      size: null,
+      bytes: 0,
+      modified: new Date().toISOString(),
+      canPreview: false,
+      previewStatus: "unsupported",
+      previewUrl: null,
+      thumbnailUrl: null,
+      originalUrl: `/api/user/files/list?path=${encodeURIComponent(path)}`,
+      directDownloadUrl: null,
+      downloadMode: "app",
+    };
+  }
+
+  function toggleSelect(itemPath: string) {
+    setSelectedPaths((current) => {
+      const next = new Set(current);
+      if (next.has(itemPath)) next.delete(itemPath);
+      else next.add(itemPath);
+      return next;
+    });
+  }
+
+  function selectAllVisible() {
+    setSelectedPaths(new Set(filteredItems.map((item) => item.path)));
+  }
+
+  function clearSelection() {
+    setSelectedPaths(new Set());
+  }
+
+  async function createFolder() {
+    if (creatingFolder) return;
+    const name = newFolderName.trim();
+    if (!name) {
+      setNotice("Folder name is required.");
+      return;
+    }
+
+    setCreatingFolder(true);
+    setNotice("");
+
+    const res = await fetch("/api/user/files/folder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path, name }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setCreatingFolder(false);
+
+    if (!res.ok || !data.ok) {
+      setNotice(data.message || "Create folder failed.");
+      return;
+    }
+
+    setFolderModalOpen(false);
+    setNewFolderName("");
+    setNotice("Folder created.");
     await load(path);
   }
 
@@ -210,17 +292,6 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
                 className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-600"
               />
             </div>
-            <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black transition hover:bg-[#c8ef34]">
-              <Upload className="h-4 w-4" />
-              Upload
-              <input
-                type="file"
-                multiple
-                className="hidden"
-                disabled={uploading}
-                onChange={(event) => void upload(event.target.files)}
-              />
-            </label>
           </div>
 
           <section className="grid gap-3 md:grid-cols-3">
@@ -273,13 +344,32 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
             </div>
           ) : null}
 
+          <UserDriveToolbar
+            selectedCount={selectedPaths.size}
+            visibleCount={filteredItems.length}
+            viewMode={viewMode}
+            setViewMode={setViewMode}
+            uploading={uploading}
+            onNewFolder={() => setFolderModalOpen(true)}
+            onUploadFiles={(files) => void upload(files)}
+            onUploadFolder={(files) => void upload(files, true)}
+            onShareCurrent={() => {
+              setShareTarget(currentFolderItem());
+              setShareResult(null);
+            }}
+            onSelectAll={selectAllVisible}
+            onClear={clearSelection}
+          />
+
           <FileList
             loading={loading}
             filteredItems={filteredItems}
+            selectedPaths={selectedPaths}
             viewMode={viewMode}
             setViewMode={setViewMode}
             load={load}
             setPreviewItem={setPreviewItem}
+            toggleSelect={toggleSelect}
             setShareTarget={(item) => {
               setShareTarget(item);
               setShareResult(null);
@@ -317,7 +407,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
         />
 
         {uploading ? (
-          <UploadProgress progress={progress} />
+          <UploadProgress progress={progress} status={uploadStatus} />
         ) : null}
 
         <DeleteConfirmModal
@@ -327,6 +417,17 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
             if (!deleting) setDeleteTarget(null);
           }}
           onConfirm={() => void deleteItem()}
+        />
+
+        <NewFolderModal
+          open={folderModalOpen}
+          value={newFolderName}
+          creating={creatingFolder}
+          onChange={setNewFolderName}
+          onClose={() => {
+            if (!creatingFolder) setFolderModalOpen(false);
+          }}
+          onConfirm={() => void createFolder()}
         />
       </>
     );
@@ -441,17 +542,14 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
               </div>
             </div>
 
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black transition hover:bg-[#c8ef34]">
-              <Upload className="h-4 w-4" />
-              <span className="hidden sm:inline">Upload</span>
-              <input
-                type="file"
-                multiple
-                className="hidden"
-                disabled={uploading}
-                onChange={(event) => void upload(event.target.files)}
-              />
-            </label>
+            <button
+              type="button"
+              onClick={() => setFolderModalOpen(true)}
+              className="inline-flex items-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black transition hover:bg-[#c8ef34]"
+            >
+              <FolderPlus className="h-4 w-4" />
+              <span className="hidden sm:inline">New Folder</span>
+            </button>
           </div>
         </header>
 
@@ -514,6 +612,23 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
                 {notice}
               </div>
             ) : null}
+
+            <UserDriveToolbar
+              selectedCount={selectedPaths.size}
+              visibleCount={filteredItems.length}
+              viewMode={viewMode}
+              setViewMode={setViewMode}
+              uploading={uploading}
+              onNewFolder={() => setFolderModalOpen(true)}
+              onUploadFiles={(files) => void upload(files)}
+              onUploadFolder={(files) => void upload(files, true)}
+              onShareCurrent={() => {
+                setShareTarget(currentFolderItem());
+                setShareResult(null);
+              }}
+              onSelectAll={selectAllVisible}
+              onClear={clearSelection}
+            />
 
             <section className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/20">
               <div className="flex flex-col gap-3 border-b border-white/10 p-3 md:flex-row md:items-center md:justify-between">
@@ -643,7 +758,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-black text-white">Uploading files</p>
-              <p className="mt-1 text-xs text-zinc-500">Please keep this page open.</p>
+              <p className="mt-1 text-xs text-zinc-500">{uploadStatus}</p>
             </div>
             <span className="text-sm font-black text-[#d7ff3f]">{progress}%</span>
           </div>
@@ -661,26 +776,149 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
         }}
         onConfirm={() => void deleteItem()}
       />
+
+      <NewFolderModal
+        open={folderModalOpen}
+        value={newFolderName}
+        creating={creatingFolder}
+        onChange={setNewFolderName}
+        onClose={() => {
+          if (!creatingFolder) setFolderModalOpen(false);
+        }}
+        onConfirm={() => void createFolder()}
+      />
     </main>
+  );
+}
+
+function UserDriveToolbar({
+  selectedCount,
+  visibleCount,
+  viewMode,
+  setViewMode,
+  uploading,
+  onNewFolder,
+  onUploadFiles,
+  onUploadFolder,
+  onShareCurrent,
+  onSelectAll,
+  onClear,
+}: {
+  selectedCount: number;
+  visibleCount: number;
+  viewMode: ViewMode;
+  setViewMode: (value: ViewMode) => void;
+  uploading: boolean;
+  onNewFolder: () => void;
+  onUploadFiles: (files: FileList | null) => void;
+  onUploadFolder: (files: FileList | null) => void;
+  onShareCurrent: () => void;
+  onSelectAll: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-3 shadow-2xl shadow-black/10">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onNewFolder}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black transition hover:bg-[#c8ef34]"
+          >
+            <FolderPlus className="h-4 w-4" />
+            New Folder
+          </button>
+
+          <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-300 transition hover:bg-white/10 hover:text-white">
+            <Upload className="h-4 w-4" />
+            Upload Files
+            <input
+              type="file"
+              multiple
+              className="hidden"
+              disabled={uploading}
+              onChange={(event) => {
+                onUploadFiles(event.target.files);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+
+          <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-300 transition hover:bg-white/10 hover:text-white">
+            <Folder className="h-4 w-4" />
+            Upload Folder
+            <input
+              type="file"
+              multiple
+              className="hidden"
+              disabled={uploading}
+              {...{ webkitdirectory: "", directory: "" }}
+              onChange={(event) => {
+                onUploadFolder(event.target.files);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={onShareCurrent}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-300 transition hover:bg-white/10 hover:text-white"
+          >
+            <Share2 className="h-4 w-4" />
+            Share current
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onSelectAll}
+            disabled={!visibleCount}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 px-3 py-2 text-sm font-bold text-zinc-300 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <CheckSquare className="h-4 w-4" />
+            Select all
+          </button>
+          <button
+            type="button"
+            onClick={onClear}
+            disabled={!selectedCount}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 px-3 py-2 text-sm font-bold text-zinc-300 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Square className="h-4 w-4" />
+            Clear
+          </button>
+          <span className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold text-zinc-500">
+            {selectedCount ? `${selectedCount} selected` : `${visibleCount} visible`}
+          </span>
+          <ViewToggle value={viewMode} onChange={setViewMode} />
+        </div>
+      </div>
+    </section>
   );
 }
 
 function FileList({
   loading,
   filteredItems,
+  selectedPaths,
   viewMode,
   setViewMode,
   load,
   setPreviewItem,
+  toggleSelect,
   setShareTarget,
   setDeleteTarget,
 }: {
   loading: boolean;
   filteredItems: DriveItem[];
+  selectedPaths: Set<string>;
   viewMode: ViewMode;
   setViewMode: (value: ViewMode) => void;
   load: (path: string) => Promise<void>;
   setPreviewItem: (item: DriveItem) => void;
+  toggleSelect: (path: string) => void;
   setShareTarget: (item: DriveItem) => void;
   setDeleteTarget: (item: DriveItem) => void;
 }) {
@@ -718,9 +956,10 @@ function FileList({
             <div
               key={item.path}
               className={viewMode === "grid"
-                ? "rounded-3xl border border-white/10 bg-black/20 p-3 transition hover:bg-white/[0.05]"
-                : "grid w-full grid-cols-[42px_minmax(0,1fr)] items-center gap-3 px-4 py-3 text-left transition hover:bg-white/[0.04] md:grid-cols-[42px_minmax(0,1fr)_120px_120px_250px]"}
+                ? `rounded-3xl border p-3 transition hover:bg-white/[0.05] ${selectedPaths.has(item.path) ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`
+                : `grid w-full grid-cols-[42px_42px_minmax(0,1fr)] items-center gap-3 px-4 py-3 text-left transition hover:bg-white/[0.04] md:grid-cols-[42px_42px_minmax(0,1fr)_120px_120px_250px] ${selectedPaths.has(item.path) ? "bg-[#d7ff3f]/10" : ""}`}
             >
+              <SelectionCheckbox checked={selectedPaths.has(item.path)} onClick={() => toggleSelect(item.path)} />
               <FileThumbnail item={item} size={viewMode === "grid" ? "grid" : "row"} />
 
               <div className="min-w-0">
@@ -776,13 +1015,13 @@ function FileList({
   );
 }
 
-function UploadProgress({ progress }: { progress: number }) {
+function UploadProgress({ progress, status }: { progress: number; status: string }) {
   return (
     <div className="fixed inset-x-3 bottom-3 z-[70] rounded-3xl border border-white/10 bg-[#101217]/95 p-4 shadow-2xl shadow-black/40 backdrop-blur md:left-auto md:right-6 md:w-96">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-black text-white">Uploading files</p>
-          <p className="mt-1 text-xs text-zinc-500">Please keep this page open.</p>
+          <p className="mt-1 text-xs text-zinc-500">{status}</p>
         </div>
         <span className="text-sm font-black text-[#d7ff3f]">{progress}%</span>
       </div>
@@ -829,6 +1068,65 @@ function DeleteConfirmModal({
           <button type="button" onClick={onConfirm} disabled={deleting} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-red-400 px-4 py-3 text-sm font-black text-black disabled:opacity-60">
             {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
             {deleting ? "Deleting..." : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NewFolderModal({
+  open,
+  value,
+  creating,
+  onChange,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  value: string;
+  creating: boolean;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4">
+      <div className="w-full rounded-t-3xl border border-white/10 bg-[#101217] p-4 shadow-2xl md:max-w-md md:rounded-3xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#d7ff3f]">New Folder</p>
+            <h2 className="mt-2 text-xl font-black text-white">Create folder</h2>
+            <p className="mt-1 text-sm text-zinc-500">Folder will be created inside your current drive path.</p>
+          </div>
+          <button onClick={onClose} disabled={creating} className="rounded-xl p-2 text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-50" aria-label="Close folder modal">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <label className="mt-5 block">
+          <span className="text-sm text-zinc-300">Folder name</span>
+          <input
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") onConfirm();
+            }}
+            autoFocus
+            placeholder="Client delivery"
+            className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none focus:border-[#d7ff3f]/50"
+          />
+        </label>
+
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onClose} disabled={creating} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:opacity-50">
+            Cancel
+          </button>
+          <button type="button" onClick={onConfirm} disabled={creating} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black disabled:opacity-60">
+            {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderPlus className="h-4 w-4" />}
+            {creating ? "Creating..." : "Create Folder"}
           </button>
         </div>
       </div>

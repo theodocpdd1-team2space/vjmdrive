@@ -16,7 +16,10 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const targetPath = String(formData.get("path") || "");
     const files = formData.getAll("files").filter((file): file is File => file instanceof File);
-    const uploaded = await uploadUserFiles(user, targetPath, files);
+    const relativePaths = formData
+      .getAll("relativePaths")
+      .map((item) => (typeof item === "string" ? item : ""));
+    const uploaded = await uploadUserFiles(user, targetPath, files, relativePaths);
     const queuePaths = filterPreviewQueueSupportedPaths(uploaded.map((item) => `__users/${user.id}/${item}`));
     if (queuePaths.length) await enqueuePreview(queuePaths);
     return NextResponse.json({ ok: true, uploaded });
