@@ -29,7 +29,7 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/beauty-shares/
     subtitle: typeof body?.subtitle === "string" ? body.subtitle.trim() : undefined,
     clientName: typeof body?.clientName === "string" ? body.clientName.trim() : undefined,
     theme: body?.theme === "dark" || body?.theme === "light" ? body.theme : undefined,
-    layout: body?.layout === "collage" || body?.layout === "grid" ? body.layout : undefined,
+    layout: body?.layout === "collage" || body?.layout === "grid" || body?.layout === "magazine" ? body.layout : undefined,
     isActive: typeof body?.isActive === "boolean" ? body.isActive : undefined,
   };
 

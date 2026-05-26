@@ -9,7 +9,7 @@ type BeautyShareRow = {
   title: string;
   subtitle?: string;
   theme: "light" | "dark";
-  layout: "collage" | "grid";
+  layout: "collage" | "grid" | "magazine";
   isActive: boolean;
   viewCount: number;
   downloadCount: number;

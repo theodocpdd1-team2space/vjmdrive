@@ -47,7 +47,8 @@ export async function POST(req: Request) {
 
   try {
     const theme: BeautyShareTheme = body?.theme === "dark" ? "dark" : "light";
-    const layout: BeautyShareLayout = body?.layout === "grid" ? "grid" : "collage";
+    const layout: BeautyShareLayout =
+      body?.layout === "grid" || body?.layout === "magazine" ? body.layout : "collage";
     const slug = validateBeautySlug(
       typeof body?.slug === "string" && body.slug.trim() ? body.slug : suggestBeautySlug(title)
     );

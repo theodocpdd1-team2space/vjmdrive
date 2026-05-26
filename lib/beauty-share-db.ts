@@ -5,7 +5,7 @@ import { getCacheRoot } from "./preview-cache";
 import { isDriveSubPath, normalizeDrivePath } from "./safe-path";
 
 export type BeautyShareTheme = "light" | "dark";
-export type BeautyShareLayout = "collage" | "grid";
+export type BeautyShareLayout = "collage" | "grid" | "magazine";
 
 export type BeautyShare = {
   id: string;
@@ -93,7 +93,7 @@ function normalizeBeautyShare(raw: Partial<BeautyShare>): BeautyShare {
     subtitle: raw.subtitle || "",
     clientName: raw.clientName || "",
     theme: raw.theme === "dark" ? "dark" : "light",
-    layout: raw.layout === "grid" ? "grid" : "collage",
+    layout: raw.layout === "grid" || raw.layout === "magazine" ? raw.layout : "collage",
     coverFilePath: raw.coverFilePath ? normalizeDrivePath(raw.coverFilePath) : undefined,
     visibility: "PUBLIC",
     isActive: raw.isActive !== false,
