@@ -20,6 +20,8 @@ import {
   Menu,
   Search,
   Share2,
+  Sparkles,
+  Trash2,
   Upload,
   User,
   X,
@@ -45,11 +47,23 @@ type ShareResult = {
   failedEmails: string[];
 };
 
+function suggestSlug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/drive", label: "My Drive", icon: HardDrive, active: true },
-  { href: "/dashboard#shared", label: "Shared with Me", icon: Share2 },
-  { href: "/dashboard#account", label: "Account", icon: User },
+  { href: "/beauty", label: "Beauty Shares", icon: Sparkles },
+  { href: "/shared", label: "Shared with Me", icon: Share2 },
+  { href: "/account", label: "Account", icon: User },
 ];
 
 export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
@@ -63,6 +77,8 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [shareTarget, setShareTarget] = useState<DriveItem | null>(null);
   const [shareResult, setShareResult] = useState<ShareResult | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DriveItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [previewItem, setPreviewItem] = useState<DriveItem | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
 
@@ -130,6 +146,33 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
   async function logout() {
     await fetch("/api/logout", { method: "POST" }).catch(() => undefined);
     window.location.href = "/";
+  }
+
+  async function deleteItem() {
+    if (!deleteTarget || deleting) return;
+
+    setDeleting(true);
+    setNotice("");
+
+    const res = await fetch("/api/user/files/delete", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: deleteTarget.path,
+        type: deleteTarget.type === "folder" ? "folder" : "file",
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setDeleting(false);
+
+    if (!res.ok || !data.ok) {
+      setNotice(data.message || "Delete failed.");
+      return;
+    }
+
+    setDeleteTarget(null);
+    setNotice("Deleted.");
+    await load(path);
   }
 
   useEffect(() => {
@@ -241,6 +284,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
               setShareTarget(item);
               setShareResult(null);
             }}
+            setDeleteTarget={setDeleteTarget}
           />
         </div>
 
@@ -275,12 +319,21 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
         {uploading ? (
           <UploadProgress progress={progress} />
         ) : null}
+
+        <DeleteConfirmModal
+          item={deleteTarget}
+          deleting={deleting}
+          onClose={() => {
+            if (!deleting) setDeleteTarget(null);
+          }}
+          onConfirm={() => void deleteItem()}
+        />
       </>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#08090d] text-zinc-100">
+    <main className="drive-user-theme min-h-screen bg-[#08090d] text-zinc-100">
       {sidebarOpen ? (
         <button
           aria-label="Close sidebar overlay"
@@ -540,6 +593,13 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
                           <Share2 className="h-4 w-4" />
                           Share
                         </button>
+                        <button
+                          onClick={() => setDeleteTarget(item)}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-300/20 px-3 py-2 text-xs font-bold text-red-100 hover:bg-red-300/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Delete
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -592,6 +652,15 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
           </div>
         </div>
       ) : null}
+
+      <DeleteConfirmModal
+        item={deleteTarget}
+        deleting={deleting}
+        onClose={() => {
+          if (!deleting) setDeleteTarget(null);
+        }}
+        onConfirm={() => void deleteItem()}
+      />
     </main>
   );
 }
@@ -604,6 +673,7 @@ function FileList({
   load,
   setPreviewItem,
   setShareTarget,
+  setDeleteTarget,
 }: {
   loading: boolean;
   filteredItems: DriveItem[];
@@ -612,6 +682,7 @@ function FileList({
   load: (path: string) => Promise<void>;
   setPreviewItem: (item: DriveItem) => void;
   setShareTarget: (item: DriveItem) => void;
+  setDeleteTarget: (item: DriveItem) => void;
 }) {
   return (
     <section className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/20">
@@ -689,6 +760,13 @@ function FileList({
                   <Share2 className="h-4 w-4" />
                   Share
                 </button>
+                <button
+                  onClick={() => setDeleteTarget(item)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-300/20 px-3 py-2 text-xs font-bold text-red-100 hover:bg-red-300/10"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </button>
               </div>
             </div>
           ))}
@@ -715,6 +793,49 @@ function UploadProgress({ progress }: { progress: number }) {
   );
 }
 
+function DeleteConfirmModal({
+  item,
+  deleting,
+  onClose,
+  onConfirm,
+}: {
+  item: DriveItem | null;
+  deleting: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  if (!item) return null;
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4">
+      <div className="w-full rounded-t-3xl border border-white/10 bg-[#101217] p-4 shadow-2xl md:max-w-md md:rounded-3xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-red-200">Confirm delete</p>
+            <h2 className="mt-2 text-xl font-black text-white">{item.name}</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              This will remove the selected {item.type === "folder" ? "folder and its contents" : "file"} from your drive.
+            </p>
+          </div>
+          <button onClick={onClose} disabled={deleting} className="rounded-xl p-2 text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-50" aria-label="Close delete confirmation">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onClose} disabled={deleting} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:opacity-50">
+            Cancel
+          </button>
+          <button type="button" onClick={onConfirm} disabled={deleting} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-red-400 px-4 py-3 text-sm font-black text-black disabled:opacity-60">
+            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            {deleting ? "Deleting..." : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UserShareModal({
   item,
   result,
@@ -729,17 +850,44 @@ function UserShareModal({
   onNotice: (message: string) => void;
 }) {
   const [title, setTitle] = useState("");
+  const [shareType, setShareType] = useState<"standard" | "private" | "beauty">("standard");
   const [permission, setPermission] = useState<"VIEW_ONLY" | "DOWNLOAD">("DOWNLOAD");
   const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE_EMAILS">("PUBLIC");
   const [emails, setEmails] = useState<string[]>([]);
   const [expiry, setExpiry] = useState<"never" | "1d" | "7d" | "30d" | "custom">("never");
   const [customDate, setCustomDate] = useState("");
   const [note, setNote] = useState("");
+  const [beautyClientName, setBeautyClientName] = useState("");
+  const [beautySlug, setBeautySlug] = useState("");
+  const [beautySubtitle, setBeautySubtitle] = useState("Your files are ready.");
+  const [beautyTheme, setBeautyTheme] = useState<"light" | "dark">("light");
+  const [beautyLayout, setBeautyLayout] = useState<"collage" | "grid">("collage");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    if (!item) return;
+    setTitle("");
+    setShareType("standard");
+    setVisibility("PUBLIC");
+    setEmails([]);
+    setNote("");
+    setBeautyClientName(item.name);
+    setBeautySlug(suggestSlug(item.name));
+    setBeautySubtitle("Your files are ready.");
+    setBeautyTheme("light");
+    setBeautyLayout("collage");
+    setError("");
+  }, [item]);
+
   if (!item) return null;
   const activeItem = item;
+
+  function setBeautyName(value: string) {
+    setBeautyClientName(value);
+    setTitle(value);
+    setBeautySlug(suggestSlug(value));
+  }
 
   function getExpiresAt() {
     if (expiry === "never") return null;
@@ -789,6 +937,50 @@ function UserShareModal({
     onNotice(data.invite?.failed?.length ? "Share created, but some invites failed." : "Share link created.");
   }
 
+  async function createBeautyShare(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitting) return;
+    if (activeItem.type !== "folder") {
+      setError("Beauty Share is available for folders.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError("");
+
+    const name = beautyClientName.trim() || activeItem.name;
+    const res = await fetch("/api/beauty-shares", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rootPath: activeItem.path,
+        slug: beautySlug || suggestSlug(name),
+        title: title.trim() || name,
+        subtitle: beautySubtitle,
+        clientName: name,
+        theme: beautyTheme,
+        layout: beautyLayout,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setSubmitting(false);
+
+    if (!res.ok || !data.ok) {
+      setError(data.message || "Create Beauty Share failed.");
+      return;
+    }
+
+    onCreated({
+      url: `${window.location.origin}${data.publicUrl}`,
+      token: data.share?.slug || beautySlug,
+      permission: "BEAUTY_SHARE",
+      expiresAt: null,
+      allowedEmails: [],
+      failedEmails: [],
+    });
+    onNotice("Beauty Share link created.");
+  }
+
   return (
     <div className="fixed inset-0 z-[100] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4">
       <div className="max-h-[92vh] w-full overflow-auto rounded-t-3xl border border-white/10 bg-[#101217] p-4 shadow-2xl md:max-w-xl md:rounded-3xl">
@@ -811,7 +1003,7 @@ function UserShareModal({
               <div className="mt-3 grid gap-2 text-xs text-zinc-300 sm:grid-cols-3">
                 <span>{result.permission}</span>
                 <span>{result.expiresAt ? new Date(result.expiresAt).toLocaleString("id-ID") : "Never expires"}</span>
-                <span>{result.allowedEmails.length ? result.allowedEmails.join(", ") : "Public login"}</span>
+                <span>{result.permission === "BEAUTY_SHARE" ? "Public no login" : result.allowedEmails.length ? result.allowedEmails.join(", ") : "Public login"}</span>
               </div>
               {result.failedEmails.length ? <p className="mt-3 text-xs font-semibold text-amber-300">Invite failed: {result.failedEmails.join(", ")}</p> : null}
             </div>
@@ -827,66 +1019,127 @@ function UserShareModal({
             </div>
           </div>
         ) : (
-          <form onSubmit={createShare} className="mt-5 space-y-4">
-            <label className="block">
-              <span className="text-sm text-zinc-300">Share title</span>
-              <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={activeItem.name} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none focus:border-[#d7ff3f]/50" />
-            </label>
-
-            <div className="grid gap-2 sm:grid-cols-2">
-              <button type="button" onClick={() => setPermission("VIEW_ONLY")} className={`rounded-2xl border p-3 text-left ${permission === "VIEW_ONLY" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
-                <p className="font-bold text-white">View only</p>
-                <p className="mt-1 text-xs text-zinc-500">Preview without download.</p>
+          <div className="mt-5 space-y-4">
+            <div className="grid gap-2 sm:grid-cols-3">
+              <button type="button" onClick={() => { setShareType("standard"); setVisibility("PUBLIC"); }} className={`rounded-2xl border p-3 text-left ${shareType === "standard" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
+                <p className="font-bold text-white">Standard Link</p>
+                <p className="mt-1 text-xs text-zinc-500">Login-protected public link.</p>
               </button>
-              <button type="button" onClick={() => setPermission("DOWNLOAD")} className={`rounded-2xl border p-3 text-left ${permission === "DOWNLOAD" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
-                <Download className="h-4 w-4 text-[#d7ff3f]" />
-                <p className="mt-2 font-bold text-white">View + Download</p>
+              <button type="button" onClick={() => { setShareType("private"); setVisibility("PRIVATE_EMAILS"); }} className={`rounded-2xl border p-3 text-left ${shareType === "private" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
+                <p className="font-bold text-white">Private Email</p>
+                <p className="mt-1 text-xs text-zinc-500">Only allowed emails.</p>
               </button>
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-2">
-              <button type="button" onClick={() => setVisibility("PUBLIC")} className={`rounded-2xl border p-3 text-left ${visibility === "PUBLIC" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
-                <p className="font-bold text-white">Public login</p>
-                <p className="mt-1 text-xs text-zinc-500">Any logged-in user can open.</p>
-              </button>
-              <button type="button" onClick={() => setVisibility("PRIVATE_EMAILS")} className={`rounded-2xl border p-3 text-left ${visibility === "PRIVATE_EMAILS" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
-                <p className="font-bold text-white">Private emails</p>
-                <p className="mt-1 text-xs text-zinc-500">Only allowed emails can open.</p>
+              <button type="button" onClick={() => { setShareType("beauty"); setError(""); }} className={`rounded-2xl border p-3 text-left ${shareType === "beauty" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
+                <Sparkles className="h-4 w-4 text-[#d7ff3f]" />
+                <p className="mt-2 font-bold text-white">Beauty Share</p>
               </button>
             </div>
 
-            {visibility === "PRIVATE_EMAILS" ? <EmailChipsInput value={emails} onChange={setEmails} placeholder="client@example.com, team@example.com" disabled={submitting} /> : null}
-
-            <div>
-              <p className="text-sm text-zinc-300">Expiry</p>
-              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                {[
-                  ["never", "Never"],
-                  ["1d", "1 day"],
-                  ["7d", "7 days"],
-                  ["30d", "30 days"],
-                  ["custom", "Custom"],
-                ].map(([value, label]) => (
-                  <button key={value} type="button" onClick={() => setExpiry(value as typeof expiry)} className={`rounded-xl border px-3 py-2 text-sm ${expiry === value ? "border-[#d7ff3f] bg-[#d7ff3f]/10 text-white" : "border-white/10 text-zinc-400"}`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {expiry === "custom" ? (
-                <label className="mt-2 flex items-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-3 py-3">
-                  <CalendarClock className="h-4 w-4 text-zinc-500" />
-                  <input type="datetime-local" value={customDate} onChange={(event) => setCustomDate(event.target.value)} className="w-full bg-transparent text-sm outline-none" />
+            {shareType === "beauty" ? (
+              <form onSubmit={createBeautyShare} className="space-y-4">
+                {activeItem.type !== "folder" ? (
+                  <p className="rounded-2xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">
+                    Beauty Share is available for folders.
+                  </p>
+                ) : null}
+                <label className="block">
+                  <span className="text-sm text-zinc-300">Client / Project Name</span>
+                  <input value={beautyClientName} onChange={(event) => setBeautyName(event.target.value)} placeholder={activeItem.name} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none focus:border-[#d7ff3f]/50" />
                 </label>
-              ) : null}
-            </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="text-sm text-zinc-300">Slug</span>
+                    <input value={beautySlug} onChange={(event) => setBeautySlug(suggestSlug(event.target.value))} placeholder={suggestSlug(activeItem.name)} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none focus:border-[#d7ff3f]/50" />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm text-zinc-300">Title</span>
+                    <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={beautyClientName || activeItem.name} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none focus:border-[#d7ff3f]/50" />
+                  </label>
+                </div>
+                <label className="block">
+                  <span className="text-sm text-zinc-300">Subtitle</span>
+                  <input value={beautySubtitle} onChange={(event) => setBeautySubtitle(event.target.value)} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none focus:border-[#d7ff3f]/50" />
+                </label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <p className="text-sm text-zinc-300">Theme</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      {(["light", "dark"] as const).map((value) => (
+                        <button key={value} type="button" onClick={() => setBeautyTheme(value)} className={`rounded-xl border px-3 py-2 text-sm capitalize ${beautyTheme === value ? "border-[#d7ff3f] bg-[#d7ff3f]/10 text-white" : "border-white/10 text-zinc-400"}`}>
+                          {value}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm text-zinc-300">Layout</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      {(["collage", "grid"] as const).map((value) => (
+                        <button key={value} type="button" onClick={() => setBeautyLayout(value)} className={`rounded-xl border px-3 py-2 text-sm capitalize ${beautyLayout === value ? "border-[#d7ff3f] bg-[#d7ff3f]/10 text-white" : "border-white/10 text-zinc-400"}`}>
+                          {value}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                {error ? <p className="rounded-2xl border border-red-300/20 bg-red-300/10 px-3 py-2 text-sm text-red-100">{error}</p> : null}
+                <button disabled={submitting || activeItem.type !== "folder"} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60">
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {submitting ? "Creating..." : "Create Beauty Link"}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={createShare} className="space-y-4">
+                <label className="block">
+                  <span className="text-sm text-zinc-300">Share title</span>
+                  <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={activeItem.name} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none focus:border-[#d7ff3f]/50" />
+                </label>
 
-            <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} placeholder="Optional note..." className="w-full resize-none rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-[#d7ff3f]/50" />
-            {error ? <p className="rounded-2xl border border-red-300/20 bg-red-300/10 px-3 py-2 text-sm text-red-100">{error}</p> : null}
-            <button disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60">
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
-              {submitting ? "Generating..." : "Generate Link"}
-            </button>
-          </form>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button type="button" onClick={() => setPermission("VIEW_ONLY")} className={`rounded-2xl border p-3 text-left ${permission === "VIEW_ONLY" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
+                    <p className="font-bold text-white">View only</p>
+                    <p className="mt-1 text-xs text-zinc-500">Preview without download.</p>
+                  </button>
+                  <button type="button" onClick={() => setPermission("DOWNLOAD")} className={`rounded-2xl border p-3 text-left ${permission === "DOWNLOAD" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
+                    <Download className="h-4 w-4 text-[#d7ff3f]" />
+                    <p className="mt-2 font-bold text-white">View + Download</p>
+                  </button>
+                </div>
+
+                {visibility === "PRIVATE_EMAILS" ? <EmailChipsInput value={emails} onChange={setEmails} placeholder="client@example.com, team@example.com" disabled={submitting} /> : null}
+
+                <div>
+                  <p className="text-sm text-zinc-300">Expiry</p>
+                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                    {[
+                      ["never", "Never"],
+                      ["1d", "1 day"],
+                      ["7d", "7 days"],
+                      ["30d", "30 days"],
+                      ["custom", "Custom"],
+                    ].map(([value, label]) => (
+                      <button key={value} type="button" onClick={() => setExpiry(value as typeof expiry)} className={`rounded-xl border px-3 py-2 text-sm ${expiry === value ? "border-[#d7ff3f] bg-[#d7ff3f]/10 text-white" : "border-white/10 text-zinc-400"}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {expiry === "custom" ? (
+                    <label className="mt-2 flex items-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-3 py-3">
+                      <CalendarClock className="h-4 w-4 text-zinc-500" />
+                      <input type="datetime-local" value={customDate} onChange={(event) => setCustomDate(event.target.value)} className="w-full bg-transparent text-sm outline-none" />
+                    </label>
+                  ) : null}
+                </div>
+
+                <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} placeholder="Optional note..." className="w-full resize-none rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-[#d7ff3f]/50" />
+                {error ? <p className="rounded-2xl border border-red-300/20 bg-red-300/10 px-3 py-2 text-sm text-red-100">{error}</p> : null}
+                <button disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60">
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+                  {submitting ? "Generating..." : "Generate Link"}
+                </button>
+              </form>
+            )}
+          </div>
         )}
       </div>
     </div>

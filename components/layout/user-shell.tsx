@@ -2,15 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   HardDrive,
   LayoutDashboard,
   LogOut,
   Menu,
+  Moon,
   Search,
   Settings,
   Share2,
+  Sparkles,
+  Sun,
   User,
   X,
 } from "lucide-react";
@@ -19,6 +22,7 @@ import { logoutAndRedirect } from "@/components/common/logout";
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/drive", label: "My Drive", icon: HardDrive },
+  { href: "/beauty", label: "Beauty Shares", icon: Sparkles },
   { href: "/shared", label: "Shared with Me", icon: Share2 },
   { href: "/account", label: "Account", icon: User },
 ];
@@ -34,9 +38,24 @@ export function UserShell({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem("driveone-user-theme") === "light" ? "light" : "dark";
+    setTheme(saved);
+    document.documentElement.dataset.theme = saved;
+  }, []);
+
+  function toggleTheme() {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.dataset.theme = next;
+    window.localStorage.setItem("driveone-user-theme", next);
+  }
 
   return (
-    <main className="min-h-screen bg-[#08090d] text-zinc-100">
+    <main className="drive-user-theme min-h-screen bg-[#08090d] text-zinc-100">
       {open ? (
         <button
           aria-label="Close sidebar overlay"
@@ -113,6 +132,15 @@ export function UserShell({
               Your personal drive, shared files, and account settings.
             </p>
           </div>
+
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 px-3 py-2 text-sm font-bold text-zinc-300 transition hover:bg-white/10 hover:text-white"
+          >
+            {theme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+            {theme === "dark" ? "Dark" : "Light"} Mode
+          </button>
 
           <button
             onClick={() => void logoutAndRedirect()}

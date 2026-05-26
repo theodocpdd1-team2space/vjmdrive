@@ -14,6 +14,8 @@ export type PreviewQueueItem = {
   updatedAt: string;
 };
 
+const PREVIEW_QUEUE_EXTENSIONS = new Set(["mp4", "mov", "m4v", "webm", "avi", "mkv", "dxv"]);
+
 function queuePath() {
   return path.join(getCacheRoot(), "db", "preview-queue.json");
 }
@@ -61,6 +63,15 @@ export async function enqueuePreview(paths: string[]) {
 
   await writePreviewQueue(queue);
   return { queue, added };
+}
+
+export function isPreviewQueueSupportedPath(filePath: string) {
+  const extension = path.extname(filePath).replace(/^\./, "").toLowerCase();
+  return PREVIEW_QUEUE_EXTENSIONS.has(extension);
+}
+
+export function filterPreviewQueueSupportedPaths(paths: string[]) {
+  return paths.filter(isPreviewQueueSupportedPath);
 }
 
 export async function getQueuedStatus(filePath: string) {

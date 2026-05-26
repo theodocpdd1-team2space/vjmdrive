@@ -17,6 +17,10 @@ export type MetadataCleanupSummary = {
   removedPreviewJobs: number;
 };
 
+export type MetadataCleanupOptions = {
+  ownerUserId?: string;
+};
+
 function dbFile(name: string) {
   return path.join(getCacheRoot(), "db", name);
 }
@@ -128,7 +132,7 @@ export async function updateMoveRelatedMetadata(moves: Array<{ oldPath: string; 
   return summary;
 }
 
-async function disableSharesForPaths(paths: string[]) {
+async function disableSharesForPaths(paths: string[], options: MetadataCleanupOptions = {}) {
   const filePath = dbFile("shares.json");
   const shares = await readJsonArray(filePath);
   const now = new Date().toISOString();
@@ -136,6 +140,7 @@ async function disableSharesForPaths(paths: string[]) {
 
   const next = shares.map((share) => {
     const rootPath = typeof share.rootPath === "string" ? share.rootPath : "";
+    if (options.ownerUserId && share.ownerUserId !== options.ownerUserId) return share;
     const shouldDisable = paths.some((deletedPath) => isSameOrChildPath(rootPath, deletedPath));
     if (!shouldDisable || share.disabledAt) return share;
     changed += 1;
@@ -162,7 +167,7 @@ async function removePreviewMetadataForPaths(fileName: "preview-queue.json" | "p
   return rows.length - next.length;
 }
 
-export async function cleanupDeletedPathMetadata(paths: string[]) {
+export async function cleanupDeletedPathMetadata(paths: string[], options: MetadataCleanupOptions = {}) {
   const safePaths = paths.map(normalizeRel).filter(Boolean);
   const summary: MetadataCleanupSummary = {
     disabledShares: 0,
@@ -172,7 +177,7 @@ export async function cleanupDeletedPathMetadata(paths: string[]) {
 
   if (!safePaths.length) return summary;
 
-  summary.disabledShares = await disableSharesForPaths(safePaths);
+  summary.disabledShares = await disableSharesForPaths(safePaths, options);
   summary.removedPreviewQueue = await removePreviewMetadataForPaths("preview-queue.json", safePaths);
   summary.removedPreviewJobs = await removePreviewMetadataForPaths("preview-jobs.json", safePaths);
   return summary;

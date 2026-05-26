@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "drive:init": "tsx scripts/drive-init.ts",
-    "preview:scan": "tsx scripts/preview-scan.ts"
+    "preview:scan": "tsx scripts/preview-scan.ts",
+    "preview:worker": "tsx scripts/preview-worker-loop.ts"
   },
   "dependencies": {
     "archiver": "^8.0.0",

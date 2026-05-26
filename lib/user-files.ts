@@ -4,7 +4,7 @@ import path from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import type { ReadableStream as NodeReadableStream } from "stream/web";
-import { ensureUniquePath, moveItems } from "./file-ops";
+import { ensureUniquePath, moveItems, resolveExisting, softDelete } from "./file-ops";
 import { assertRealPathInsideRoot, assertSafeName, isDriveSubPath, normalizeDrivePath, resolveSafePath } from "./safe-path";
 import { ensureUserStorage, userStorageRelativePath, userStoragePath, type DriveUser } from "./auth";
 import { directorySize } from "./storage";
@@ -56,4 +56,23 @@ export async function moveUserItems(user: DriveUser, items: string[], targetFold
   if (!isDriveSubPath(root, fullTarget)) throw new Error("Invalid target");
   const moved = await moveItems(fullItems, fullTarget);
   return moved.map((item) => path.posix.relative(root, item));
+}
+
+export async function deleteUserItem(user: DriveUser, itemPath: string, type: "file" | "folder") {
+  const root = userStorageRelativePath(user.id);
+  const relative = normalizeDrivePath(itemPath);
+
+  if (!relative) throw new Error("Cannot delete drive root");
+
+  const fullPath = path.posix.join(root, relative);
+  if (!isDriveSubPath(root, fullPath)) throw new Error("Invalid path");
+
+  const existing = await resolveExisting(fullPath);
+  const stat = await fs.stat(existing.absolutePath);
+
+  if (type === "file" && !stat.isFile()) throw new Error("Selected item is not a file");
+  if (type === "folder" && !stat.isDirectory()) throw new Error("Selected item is not a folder");
+
+  const deleted = await softDelete([fullPath]);
+  return deleted.map((item) => path.posix.relative(root, item));
 }

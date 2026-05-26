@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
 import { ensureUniquePath, resolveExisting } from "@/lib/file-ops";
 import { assertSafeName } from "@/lib/safe-path";
-import { enqueuePreview } from "@/lib/preview-queue";
+import { enqueuePreview, filterPreviewQueueSupportedPaths } from "@/lib/preview-queue";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,8 +33,8 @@ export async function POST(req: NextRequest) {
       uploaded.push(path.posix.join(target.relativePath, path.basename(destination)));
     }
 
-    const videoPaths = uploaded.filter((item) => /\.(mp4|mov|m4v|webm|avi|mkv|dxv)$/i.test(item));
-    if (videoPaths.length) await enqueuePreview(videoPaths);
+    const queuePaths = filterPreviewQueueSupportedPaths(uploaded);
+    if (queuePaths.length) await enqueuePreview(queuePaths);
 
     return NextResponse.json({ ok: true, uploaded });
   } catch (caught) {

@@ -54,3 +54,50 @@ body {
 .menu-btn:hover {
   background: rgba(255, 255, 255, 0.1);
 }
+
+html[data-theme="light"] .drive-user-theme {
+  background: #f7f8f3 !important;
+  color: #111827 !important;
+}
+
+html[data-theme="light"] .drive-user-theme .bg-\[\#08090d\],
+html[data-theme="light"] .drive-user-theme .bg-\[\#0b0c10\]\/95,
+html[data-theme="light"] .drive-user-theme .bg-\[\#101217\],
+html[data-theme="light"] .drive-user-theme .bg-\[\#090a0f\]\/95 {
+  background-color: #f7f8f3 !important;
+}
+
+html[data-theme="light"] .drive-user-theme .bg-white\/\[0\.035\],
+html[data-theme="light"] .drive-user-theme .bg-white\/\[0\.03\],
+html[data-theme="light"] .drive-user-theme .bg-white\/\[0\.04\],
+html[data-theme="light"] .drive-user-theme .bg-black\/20,
+html[data-theme="light"] .drive-user-theme .bg-black\/30 {
+  background-color: #ffffff !important;
+}
+
+html[data-theme="light"] .drive-user-theme .border-white\/10 {
+  border-color: rgba(17, 24, 39, 0.12) !important;
+}
+
+html[data-theme="light"] .drive-user-theme .text-white,
+html[data-theme="light"] .drive-user-theme .text-zinc-100,
+html[data-theme="light"] .drive-user-theme .text-zinc-200,
+html[data-theme="light"] .drive-user-theme .text-zinc-300 {
+  color: #111827 !important;
+}
+
+html[data-theme="light"] .drive-user-theme .text-zinc-400,
+html[data-theme="light"] .drive-user-theme .text-zinc-500,
+html[data-theme="light"] .drive-user-theme .text-zinc-600 {
+  color: #4b5563 !important;
+}
+
+html[data-theme="light"] .drive-user-theme input,
+html[data-theme="light"] .drive-user-theme textarea {
+  color: #111827 !important;
+}
+
+html[data-theme="light"] .drive-user-theme input::placeholder,
+html[data-theme="light"] .drive-user-theme textarea::placeholder {
+  color: #6b7280 !important;
+}
