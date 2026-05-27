@@ -27,9 +27,11 @@ type AdminUser = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "USER";
+  role: "ADMIN" | "USER" | string;
   plan: string;
   quotaBytes: number | null;
+  storageUsedBytes: number;
+  storageLimitBytes: number | null;
   storage: {
     used: string;
     quota: string;
@@ -38,6 +40,7 @@ type AdminUser = {
   emailVerified: boolean;
   disabled: boolean;
   createdAt: string;
+  updatedAt: string;
   lastLoginAt: string | null;
 };
 
@@ -55,10 +58,137 @@ const planOptions = ["Free", "Personal", "Pro", "Vendor", "Business", "Custom"];
 type FilterMode = "ALL" | "ACTIVE" | "DISABLED" | "VERIFIED" | "UNVERIFIED" | "ADMIN";
 type RoleFilter = "ALL" | "ADMIN" | "USER";
 
+type RawRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is RawRecord {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function pick(raw: RawRecord, keys: string[]) {
+  for (const key of keys) {
+    if (raw[key] !== undefined && raw[key] !== null) return raw[key];
+  }
+  return undefined;
+}
+
+function safeText(value: unknown, fallback = "-") {
+  if (typeof value === "string") {
+    const clean = value.trim();
+    return clean || fallback;
+  }
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return fallback;
+}
+
+function safeNumber(value: unknown, fallback = 0) {
+  const numeric = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function safeBoolean(value: unknown, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "active", "verified"].includes(normalized)) return true;
+    if (["false", "0", "no", "disabled", "inactive", "unverified"].includes(normalized)) return false;
+  }
+  return fallback;
+}
+
+function normalizeRole(value: unknown) {
+  const role = safeText(value, "USER").toUpperCase();
+  return role === "ADMIN" ? "ADMIN" : "USER";
+}
+
+function normalizePlan(value: unknown, role: string) {
+  const plan = safeText(value, role === "ADMIN" ? "Custom" : "Free");
+  return plan === "-" ? (role === "ADMIN" ? "Custom" : "Free") : plan;
+}
+
+function bytesFrom(value: unknown, fallback = 0) {
+  if (isRecord(value)) {
+    return safeNumber(pick(value, ["bytes", "value", "used", "quota", "limit"]), fallback);
+  }
+  return safeNumber(value, fallback);
+}
+
+function nullableBytesFrom(value: unknown) {
+  if (value === null || value === "unlimited" || value === "Unlimited") return null;
+  const bytes = bytesFrom(value, 0);
+  return bytes > 0 ? bytes : 0;
+}
+
+function formatBytes(value: unknown) {
+  const bytes = bytesFrom(value, 0);
+  if (bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = bytes;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size >= 10 || unit === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[unit]}`;
+}
+
+function formatQuota(value: unknown) {
+  if (value === null || value === "unlimited" || value === "Unlimited") return "Unlimited";
+  const bytes = bytesFrom(value, 0);
+  return bytes > 0 ? formatBytes(bytes) : "0 B";
+}
+
+function normalizeUser(value: unknown, index: number): AdminUser {
+  const raw = isRecord(value) ? value : {};
+  const role = normalizeRole(pick(raw, ["role", "userRole"]));
+  const email = safeText(pick(raw, ["email", "mail", "username"]), `unknown-${index + 1}@driveone.local`);
+  const id = safeText(pick(raw, ["id", "userId", "_id", "uid"]), email || `user-${index + 1}`);
+  const name = safeText(pick(raw, ["name", "displayName", "username"]), email);
+  const plan = normalizePlan(pick(raw, ["plan", "planName", "subscriptionPlan"]), role);
+  const storage = isRecord(raw.storage) ? raw.storage : {};
+  const quotaValue = pick(raw, ["quotaBytes", "storageLimitBytes", "storageLimit", "quota"]);
+  const usedValue = pick(raw, ["usedBytes", "storageUsedBytes", "usageBytes"]);
+  const storageUsedBytes = bytesFrom(pick(storage, ["usedBytes", "bytes", "usedValue"]) ?? usedValue, bytesFrom(storage.used, 0));
+  const storageLimitBytes = nullableBytesFrom(pick(storage, ["quotaBytes", "limitBytes", "quotaValue"]) ?? quotaValue);
+  const storagePercent =
+    storageLimitBytes && storageLimitBytes > 0
+      ? Math.max(0, Math.min(100, Math.round((storageUsedBytes / storageLimitBytes) * 100)))
+      : Math.max(0, Math.min(100, safeNumber(storage.percent, 0)));
+  const status = safeText(pick(raw, ["status", "isActive"]), "active").toLowerCase();
+  const disabled = safeBoolean(raw.disabled, status === "disabled" || status === "inactive");
+
+  return {
+    id,
+    name,
+    email,
+    role,
+    plan,
+    quotaBytes: storageLimitBytes,
+    storageUsedBytes,
+    storageLimitBytes,
+    storage: {
+      used: safeText(storage.used, formatBytes(storageUsedBytes)),
+      quota: safeText(storage.quota, formatQuota(storageLimitBytes)),
+      percent: storagePercent,
+    },
+    emailVerified: safeBoolean(raw.emailVerified, false),
+    disabled,
+    createdAt: safeText(pick(raw, ["createdAt", "created_at"]), "-"),
+    updatedAt: safeText(pick(raw, ["updatedAt", "updated_at"]), "-"),
+    lastLoginAt: typeof raw.lastLoginAt === "string" ? raw.lastLoginAt : null,
+  };
+}
+
+function parseUsersResponse(data: unknown) {
+  if (Array.isArray(data)) return data.map(normalizeUser);
+  if (isRecord(data) && Array.isArray(data.users)) return data.users.map(normalizeUser);
+  return null;
+}
+
 export function AdminUsersClient() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterMode>("ALL");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("ALL");
@@ -69,43 +199,61 @@ export function AdminUsersClient() {
 
   async function loadUsers() {
     setLoading(true);
+    setLoadError("");
 
-    const res = await fetch("/api/admin/users", { cache: "no-store" });
-    const data = await res.json().catch(() => ({}));
+    try {
+      const res = await fetch("/api/admin/users", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      const normalizedUsers = parseUsersResponse(data);
 
-    setLoading(false);
+      setLoading(false);
 
-    if (res.ok && data.ok) {
-      setUsers(data.users || []);
-      return;
+      if (res.ok && normalizedUsers) {
+        setUsers(normalizedUsers);
+        return;
+      }
+
+      const message = isRecord(data) && typeof data.message === "string" ? data.message : "Unable to load users. Please check admin data.";
+      setUsers([]);
+      setLoadError(message);
+      setNotice(message);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Failed to load users.";
+      setLoading(false);
+      setUsers([]);
+      setLoadError(message);
+      setNotice(message);
     }
-
-    setNotice(data.message || "Failed to load users.");
   }
 
   async function patchUser(userId: string, patch: Record<string, unknown>) {
     setNotice("");
     setUpdatingId(userId);
 
-    const res = await fetch("/api/admin/users", {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ userId, ...patch }),
-    });
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ userId, ...patch }),
+      });
 
-    const data = await res.json().catch(() => ({}));
+      const data = await res.json().catch(() => ({}));
 
-    setUpdatingId(null);
+      setUpdatingId(null);
 
-    if (!res.ok || !data.ok) {
-      setNotice(data.message || "Update failed.");
-      return;
+      if (!res.ok || !data.ok) {
+        setNotice(isRecord(data) && typeof data.message === "string" ? data.message : "Update failed.");
+        return;
+      }
+
+      setNotice("User updated.");
+      await loadUsers();
+    } catch (caught) {
+      setUpdatingId(null);
+      setNotice(caught instanceof Error ? caught.message : "Update failed.");
     }
-
-    setNotice("User updated.");
-    await loadUsers();
   }
 
   async function createAdminUser(input: { email: string; password: string; role: "ADMIN" | "USER"; plan: string; quotaBytes: number | null }) {
@@ -117,7 +265,7 @@ export function AdminUsersClient() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) {
-      throw new Error(data.message || "Create user failed.");
+      throw new Error(isRecord(data) && typeof data.message === "string" ? data.message : "Create user failed.");
     }
     setNotice("User created.");
     await loadUsers();
@@ -291,6 +439,16 @@ export function AdminUsersClient() {
             ) : null}
           </section>
 
+          {!loading && loadError ? (
+            <section className="rounded-3xl border border-red-300/20 bg-red-300/10 p-5 text-red-50 shadow-2xl shadow-black/20">
+              <p className="text-lg font-black">Failed to load users</p>
+              <p className="mt-2 text-sm leading-6 text-red-100/80">{loadError}</p>
+              <button type="button" onClick={() => void loadUsers()} className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm font-black text-[#08090d]">
+                Retry
+              </button>
+            </section>
+          ) : null}
+
           {loading ? (
             <section className="flex h-72 items-center justify-center rounded-3xl border border-white/10 bg-white/[0.035] text-zinc-400">
               <div className="flex items-center gap-2">
@@ -300,7 +458,7 @@ export function AdminUsersClient() {
             </section>
           ) : null}
 
-          {!loading && filteredUsers.length === 0 ? (
+          {!loading && !loadError && filteredUsers.length === 0 ? (
             <section className="flex h-72 flex-col items-center justify-center gap-3 rounded-3xl border border-white/10 bg-white/[0.035] p-8 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-3xl border border-white/10 bg-white/[0.04] text-[#d7ff3f]">
                 <UserRound className="h-7 w-7" />
@@ -312,7 +470,7 @@ export function AdminUsersClient() {
             </section>
           ) : null}
 
-          {!loading && filteredUsers.length > 0 ? (
+          {!loading && !loadError && filteredUsers.length > 0 ? (
             <div className="grid gap-4">
               {filteredUsers.map((user) => {
                 const isExpanded = expanded.has(user.id);
@@ -362,7 +520,8 @@ export function AdminUsersClient() {
                         <Info icon={BadgeCheck} label="Verified" value={user.emailVerified ? "Yes" : "No"} />
                         <Info icon={Ban} label="Status" value={user.disabled ? "Disabled" : "Active"} />
                         <Info icon={Clock} label="Created" value={formatDate(user.createdAt)} />
-                        <Info icon={Clock} label="Last login" value={user.lastLoginAt ? formatDate(user.lastLoginAt) : "-"} />
+                        <Info icon={Clock} label="Updated" value={formatDate(user.updatedAt)} />
+                        <Info icon={Clock} label="Last login" value={formatDate(user.lastLoginAt)} />
                       </div>
 
                       <div className="mt-5">
@@ -400,7 +559,7 @@ export function AdminUsersClient() {
                         <label className="text-sm font-bold text-zinc-300">
                           Plan
                           <select
-                            defaultValue={user.plan}
+                            value={user.plan}
                             disabled={updatingId === user.id}
                             onChange={(event) => void patchUser(user.id, { plan: event.target.value })}
                             className="mt-2 w-full rounded-2xl border border-white/10 bg-[#08090d] px-3 py-3 text-sm text-white outline-none disabled:opacity-50"
@@ -414,7 +573,7 @@ export function AdminUsersClient() {
                         <label className="text-sm font-bold text-zinc-300">
                           Quota
                           <select
-                            defaultValue={user.quotaBytes ?? "unlimited"}
+                            value={user.quotaBytes === null ? "unlimited" : String(user.quotaBytes)}
                             disabled={updatingId === user.id}
                             onChange={(event) =>
                               void patchUser(user.id, {
@@ -658,7 +817,8 @@ function VerifiedBadge({ verified }: { verified: boolean }) {
   );
 }
 
-function formatDate(value: string) {
+function formatDate(value: unknown) {
+  if (typeof value !== "string" || !value.trim() || value === "-") return "-";
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
