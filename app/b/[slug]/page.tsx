@@ -73,6 +73,7 @@ export default async function BeautySharePage({ params }: { params: Promise<{ sl
         clientName: share.clientName || "",
         theme: share.theme,
         layout: share.layout,
+        customText: share.customText,
       }}
       items={items}
       coverItem={coverItem}

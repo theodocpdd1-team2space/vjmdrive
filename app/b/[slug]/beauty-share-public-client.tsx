@@ -44,7 +44,64 @@ type PublicBeautyShare = {
   clientName?: string;
   theme: BeautyTheme;
   layout: BeautyLayout;
+  customText?: BeautyShareCustomText;
 };
+
+type BeautyShareCustomText = {
+  heroEyebrow?: string;
+  heroTitle?: string;
+  heroSubtitle?: string;
+  heroMeta?: string;
+  primaryButton?: string;
+  secondaryButton?: string;
+  downloadButton?: string;
+  albumModeLabel?: string;
+  albumTitle?: string;
+  coverLabel?: string;
+  coverSubtitle?: string;
+  introEyebrow?: string;
+  introTitle?: string;
+  introDescription?: string;
+  galleryEyebrow?: string;
+  galleryTitle?: string;
+  galleryDescription?: string;
+  downloadTitle?: string;
+  downloadDescription?: string;
+  footerText?: string;
+};
+
+type BeautyShareText = Required<BeautyShareCustomText>;
+
+function textOrDefault(value: string | undefined, fallback: string) {
+  return value?.trim() || fallback;
+}
+
+  function buildBeautyShareText(share: PublicBeautyShare, title: string): BeautyShareText {
+  const custom = share.customText || {};
+
+  return {
+    heroEyebrow: textOrDefault(custom.heroEyebrow, "Private Digital Album"),
+    heroTitle: textOrDefault(custom.heroTitle, title),
+    heroSubtitle: textOrDefault(custom.heroSubtitle, share.subtitle || "Your files are ready."),
+    heroMeta: textOrDefault(custom.heroMeta, "Your files are ready"),
+    primaryButton: textOrDefault(custom.primaryButton, "Open Album"),
+    secondaryButton: textOrDefault(custom.secondaryButton, "View Files"),
+    downloadButton: textOrDefault(custom.downloadButton, "Download all"),
+    albumModeLabel: textOrDefault(custom.albumModeLabel, "Magazine Mode"),
+    albumTitle: textOrDefault(custom.albumTitle, "Digital wedding book"),
+    coverLabel: textOrDefault(custom.coverLabel, "Digital Wedding Book"),
+    coverSubtitle: textOrDefault(custom.coverSubtitle, "Private Digital Album"),
+    introEyebrow: textOrDefault(custom.introEyebrow, "Delivery Notes"),
+    introTitle: textOrDefault(custom.introTitle, "Your files are ready."),
+    introDescription: textOrDefault(custom.introDescription, "Preview, browse, and download your files in one place."),
+    galleryEyebrow: textOrDefault(custom.galleryEyebrow, "All Files"),
+    galleryTitle: textOrDefault(custom.galleryTitle, "Browse and download every file from this delivery."),
+    galleryDescription: textOrDefault(custom.galleryDescription, ""),
+    downloadTitle: textOrDefault(custom.downloadTitle, "Download your files"),
+    downloadDescription: textOrDefault(custom.downloadDescription, "The album preview is only the beginning. Browse the full delivery and save the files you need."),
+    footerText: textOrDefault(custom.footerText, "Delivered with driveOne"),
+  };
+}
 
 type MagazineTemplate = "cover" | "intro" | "full" | "duo" | "feature-grid" | "quad" | "download" | "back";
 
@@ -189,7 +246,7 @@ export function BeautySharePublicClient({
   const magazineRef = useRef<HTMLDivElement | null>(null);
 
   const title = share.title || "Client Delivery";
-  const subtitle = share.subtitle || "Preview, browse, and download your files in one place.";
+  const text = useMemo(() => buildBeautyShareText(share, title), [share, title]);
   const clientName = share.clientName || title;
   const coverSrc = previewImage(coverItem || mediaItems.find((item) => item.type === "image") || mediaItems[0] || null);
   const lightboxItem = lightboxIndex === null ? null : mediaItems[lightboxIndex] || null;
@@ -294,8 +351,8 @@ export function BeautySharePublicClient({
       ) : null}
 
       <AlbumCover
-        title={title}
-        subtitle={subtitle}
+        title={text.heroTitle}
+        text={text}
         coverSrc={coverSrc}
         downloadHref={downloadHref}
         onOpenAlbum={() => document.getElementById("album")?.scrollIntoView({ behavior: "smooth" })}
@@ -306,8 +363,8 @@ export function BeautySharePublicClient({
           <div className="mx-auto max-w-[1360px]">
             <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.24em] text-[#5c5a42]">Magazine Mode</p>
-                <h2 className="mt-3 max-w-2xl text-3xl font-black tracking-tight text-[#171717] md:text-5xl">Digital wedding book</h2>
+                <p className="text-xs font-black uppercase tracking-[0.24em] text-[#5c5a42]">{text.albumModeLabel}</p>
+                <h2 className="mt-3 max-w-2xl text-3xl font-black tracking-tight text-[#171717] md:text-5xl">{text.albumTitle}</h2>
               </div>
               <MagazineControls
                 pageIndex={pageIndex}
@@ -332,6 +389,7 @@ export function BeautySharePublicClient({
                     page={currentPage}
                     share={share}
                     stats={stats}
+                    text={text}
                     coverItem={coverItem}
                     downloadHref={downloadHref}
                     side="left"
@@ -344,6 +402,7 @@ export function BeautySharePublicClient({
                         page={nextPage}
                         share={share}
                         stats={stats}
+                        text={text}
                         coverItem={coverItem}
                         downloadHref={downloadHref}
                         side="right"
@@ -376,8 +435,9 @@ export function BeautySharePublicClient({
         <div className="mx-auto max-w-7xl">
           <div className="mb-8 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-[#7a744b]">All Files</p>
-              <h2 className="mt-3 text-3xl font-black tracking-tight md:text-5xl">Browse and download every file from this delivery.</h2>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-[#7a744b]">{text.galleryEyebrow}</p>
+              <h2 className="mt-3 text-3xl font-black tracking-tight md:text-5xl">{text.galleryTitle}</h2>
+              {text.galleryDescription ? <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-[#6b6258]">{text.galleryDescription}</p> : null}
             </div>
             <p className="text-sm font-bold text-[#6b6258]">{items.length} item ready</p>
           </div>
@@ -420,7 +480,7 @@ export function BeautySharePublicClient({
 
       <footer className="bg-[#11110f] px-4 py-7 text-center text-[11px] font-bold text-white/45 md:px-8">
         <div className="mx-auto max-w-7xl">
-          <span>Delivered with driveOne · </span>
+          <span>{text.footerText} · </span>
           <a href="https://solusivendor.com" target="_blank" rel="noopener noreferrer" className="hover:text-white/75">
             Built by solusivendor.com
           </a>
@@ -443,13 +503,13 @@ export function BeautySharePublicClient({
 
 function AlbumCover({
   title,
-  subtitle,
+  text,
   coverSrc,
   downloadHref,
   onOpenAlbum,
 }: {
   title: string;
-  subtitle: string;
+  text: BeautyShareText;
   coverSrc: string;
   downloadHref: string | null;
   onOpenAlbum: () => void;
@@ -462,22 +522,22 @@ function AlbumCover({
 
       <div className="relative mx-auto grid w-full max-w-6xl items-center gap-10 md:grid-cols-[0.9fr_1.1fr]">
         <div className="order-2 md:order-1">
-          <p className="text-xs font-black uppercase tracking-[0.26em] text-[#d7ff3f]">Private Digital Album</p>
+          <p className="text-xs font-black uppercase tracking-[0.26em] text-[#d7ff3f]">{text.heroEyebrow}</p>
           <h1 className="mt-5 max-w-3xl text-5xl font-black leading-[0.95] tracking-tight md:text-8xl">{title}</h1>
-          <p className="mt-6 max-w-xl text-base leading-8 text-white/76 md:text-lg">{subtitle}</p>
-          <p className="mt-4 text-xs font-black uppercase tracking-[0.22em] text-white/50">Your files are ready</p>
+          <p className="mt-6 max-w-xl text-base leading-8 text-white/76 md:text-lg">{text.heroSubtitle}</p>
+          <p className="mt-4 text-xs font-black uppercase tracking-[0.22em] text-white/50">{text.heroMeta}</p>
           <div className="mt-8 flex flex-wrap gap-3">
             <button type="button" onClick={onOpenAlbum} className="inline-flex items-center gap-2 rounded-full bg-[#d7ff3f] px-5 py-3 text-sm font-black text-black transition hover:bg-[#c8ef34]">
-              Open Album
+              {text.primaryButton}
               <ArrowRight className="h-4 w-4" />
             </button>
             <a href="#gallery" className="rounded-full border border-white/20 bg-white/10 px-5 py-3 text-sm font-black text-white backdrop-blur transition hover:bg-white/20">
-              View Files
+              {text.secondaryButton}
             </a>
             {downloadHref ? (
               <a href={downloadHref} className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/20 px-5 py-3 text-sm font-black text-white backdrop-blur transition hover:bg-white/20">
                 <Download className="h-4 w-4" />
-                Download all
+                {text.downloadButton}
               </a>
             ) : null}
           </div>
@@ -491,9 +551,9 @@ function AlbumCover({
               {coverSrc ? <img src={coverSrc} alt={title} className="h-full w-full object-cover" /> : null}
               <div className="absolute inset-0 bg-gradient-to-t from-black/[0.82] via-black/[0.16] to-black/20" />
               <div className="absolute inset-x-0 bottom-0 p-7 text-white">
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#d7ff3f]">Digital Wedding Book</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#d7ff3f]">{text.coverLabel}</p>
                 <h2 className="mt-3 text-3xl font-black leading-none">{title}</h2>
-                <p className="mt-3 text-xs font-bold uppercase tracking-[0.18em] text-white/54">Private Digital Album</p>
+                <p className="mt-3 text-xs font-bold uppercase tracking-[0.18em] text-white/54">{text.coverSubtitle}</p>
               </div>
             </div>
           </div>
@@ -551,6 +611,7 @@ function MagazinePageView({
   share,
   coverItem,
   stats,
+  text,
   downloadHref,
   side,
   onGallery,
@@ -560,6 +621,7 @@ function MagazinePageView({
   share: PublicBeautyShare;
   coverItem: PublicDriveItem | null;
   stats: Stats;
+  text: BeautyShareText;
   downloadHref: string | null;
   side: "left" | "right";
   onGallery: () => void;
@@ -575,12 +637,12 @@ function MagazinePageView({
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-black/[0.18]" />
         <div className="relative flex h-full min-h-[560px] flex-col justify-between p-8 md:min-h-[680px] md:p-12">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.28em] text-[#d7ff3f]">Digital Wedding Book</p>
-            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.24em] text-white/56">Private Digital Album</p>
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-[#d7ff3f]">{text.coverLabel}</p>
+            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.24em] text-white/56">{text.coverSubtitle}</p>
           </div>
           <div>
-            <h3 className="max-w-xl text-4xl font-black leading-none tracking-tight md:text-6xl">{share.title}</h3>
-            <p className="mt-5 max-w-md text-sm leading-7 text-white/72">{share.subtitle || "Your files are ready."}</p>
+            <h3 className="max-w-xl text-4xl font-black leading-none tracking-tight md:text-6xl">{text.heroTitle}</h3>
+            <p className="mt-5 max-w-md text-sm leading-7 text-white/72">{text.heroSubtitle}</p>
           </div>
         </div>
       </article>
@@ -592,9 +654,9 @@ function MagazinePageView({
       <article className={`beauty-book-page ${sideClass}`}>
         <div className="flex h-full min-h-[560px] flex-col justify-between md:min-h-[680px]">
           <div>
-            <PageLabel>{page.eyebrow}</PageLabel>
-            <h3 className="mt-8 max-w-md text-4xl font-black leading-none tracking-tight md:text-6xl">Your files are ready.</h3>
-            <p className="mt-6 max-w-md text-base leading-8 text-[var(--beauty-muted)]">Preview, browse, and download your files in one place.</p>
+            <PageLabel>{text.introEyebrow}</PageLabel>
+            <h3 className="mt-8 max-w-md text-4xl font-black leading-none tracking-tight md:text-6xl">{text.introTitle}</h3>
+            <p className="mt-6 max-w-md text-base leading-8 text-[var(--beauty-muted)]">{text.introDescription}</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Stat label="Total files" value={stats.total} />
@@ -613,17 +675,17 @@ function MagazinePageView({
         <div className="flex h-full min-h-[560px] flex-col justify-between md:min-h-[680px]">
           <div>
             <PageLabel>{page.eyebrow}</PageLabel>
-            <h3 className="mt-8 max-w-md text-4xl font-black leading-none tracking-tight md:text-6xl">Download your files</h3>
-            <p className="mt-6 max-w-md text-base leading-8 text-[var(--beauty-muted)]">The album preview is only the beginning. Browse the full delivery and save the files you need.</p>
+            <h3 className="mt-8 max-w-md text-4xl font-black leading-none tracking-tight md:text-6xl">{text.downloadTitle}</h3>
+            <p className="mt-6 max-w-md text-base leading-8 text-[var(--beauty-muted)]">{text.downloadDescription}</p>
           </div>
           <div className="flex flex-wrap gap-3">
             <button type="button" onClick={onGallery} className="rounded-full bg-[#171717] px-5 py-3 text-xs font-black text-white">
-              View gallery
+              {text.secondaryButton}
             </button>
             {downloadHref ? (
               <a href={downloadHref} className="inline-flex items-center gap-2 rounded-full bg-[#d7ff3f] px-5 py-3 text-xs font-black text-black">
                 <Download className="h-4 w-4" />
-                Download all
+                {text.downloadButton}
               </a>
             ) : null}
           </div>
@@ -642,12 +704,12 @@ function MagazinePageView({
           <h3 className="mt-6 max-w-md text-4xl font-black leading-none md:text-6xl">Your delivery is ready to download</h3>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <button type="button" onClick={onGallery} className="rounded-full bg-white px-5 py-3 text-xs font-black text-[#171717]">
-              View files
+              {text.secondaryButton}
             </button>
             {downloadHref ? (
               <a href={downloadHref} className="inline-flex items-center gap-2 rounded-full bg-[#d7ff3f] px-5 py-3 text-xs font-black text-black">
                 <Download className="h-4 w-4" />
-                Download all
+                {text.downloadButton}
               </a>
             ) : null}
           </div>

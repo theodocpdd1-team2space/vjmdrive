@@ -7,6 +7,29 @@ import { isDriveSubPath, normalizeDrivePath } from "./safe-path";
 export type BeautyShareTheme = "light" | "dark";
 export type BeautyShareLayout = "collage" | "grid" | "magazine";
 
+export type BeautyShareCustomText = {
+  heroEyebrow?: string;
+  heroTitle?: string;
+  heroSubtitle?: string;
+  heroMeta?: string;
+  primaryButton?: string;
+  secondaryButton?: string;
+  downloadButton?: string;
+  albumModeLabel?: string;
+  albumTitle?: string;
+  coverLabel?: string;
+  coverSubtitle?: string;
+  introEyebrow?: string;
+  introTitle?: string;
+  introDescription?: string;
+  galleryEyebrow?: string;
+  galleryTitle?: string;
+  galleryDescription?: string;
+  downloadTitle?: string;
+  downloadDescription?: string;
+  footerText?: string;
+};
+
 export type BeautyShare = {
   id: string;
   ownerUserId: string;
@@ -22,9 +45,33 @@ export type BeautyShare = {
   isActive: boolean;
   viewCount: number;
   downloadCount: number;
+  customText?: BeautyShareCustomText;
   createdAt: string;
   updatedAt: string;
   lastAccessAt?: string;
+};
+
+const CUSTOM_TEXT_LIMITS: Record<keyof BeautyShareCustomText, number> = {
+  heroEyebrow: 120,
+  heroTitle: 160,
+  heroSubtitle: 260,
+  heroMeta: 160,
+  primaryButton: 80,
+  secondaryButton: 80,
+  downloadButton: 80,
+  albumModeLabel: 120,
+  albumTitle: 160,
+  coverLabel: 120,
+  coverSubtitle: 160,
+  introEyebrow: 120,
+  introTitle: 160,
+  introDescription: 300,
+  galleryEyebrow: 120,
+  galleryTitle: 180,
+  galleryDescription: 300,
+  downloadTitle: 160,
+  downloadDescription: 300,
+  footerText: 180,
 };
 
 export const RESERVED_BEAUTY_SLUGS = new Set([
@@ -80,6 +127,26 @@ export function validateBeautySlug(value: string) {
   return slug;
 }
 
+function cleanCustomTextValue(value: unknown, limit: number) {
+  if (typeof value !== "string") return undefined;
+  const clean = value.replace(/\s+/g, " ").trim().slice(0, limit);
+  return clean || undefined;
+}
+
+export function normalizeBeautyShareCustomText(value: unknown): BeautyShareCustomText | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+
+  const source = value as Record<string, unknown>;
+  const customText: BeautyShareCustomText = {};
+
+  (Object.keys(CUSTOM_TEXT_LIMITS) as Array<keyof BeautyShareCustomText>).forEach((key) => {
+    const clean = cleanCustomTextValue(source[key], CUSTOM_TEXT_LIMITS[key]);
+    if (clean) customText[key] = clean;
+  });
+
+  return Object.keys(customText).length ? customText : undefined;
+}
+
 function normalizeBeautyShare(raw: Partial<BeautyShare>): BeautyShare {
   const now = new Date().toISOString();
   const title = (raw.title || raw.clientName || "Client Delivery").trim();
@@ -99,6 +166,7 @@ function normalizeBeautyShare(raw: Partial<BeautyShare>): BeautyShare {
     isActive: raw.isActive !== false,
     viewCount: Number.isFinite(raw.viewCount) ? Number(raw.viewCount) : 0,
     downloadCount: Number.isFinite(raw.downloadCount) ? Number(raw.downloadCount) : 0,
+    customText: normalizeBeautyShareCustomText(raw.customText),
     createdAt: raw.createdAt || now,
     updatedAt: raw.updatedAt || raw.createdAt || now,
     lastAccessAt: raw.lastAccessAt,
@@ -127,6 +195,7 @@ export async function createBeautyShare(input: {
   theme?: BeautyShareTheme;
   layout?: BeautyShareLayout;
   coverFilePath?: string;
+  customText?: BeautyShareCustomText;
 }) {
   const shares = await readBeautyShares();
   const slug = validateBeautySlug(input.slug);
@@ -147,6 +216,7 @@ export async function createBeautyShare(input: {
     theme: input.theme,
     layout: input.layout,
     coverFilePath: input.coverFilePath,
+    customText: input.customText,
     visibility: "PUBLIC",
     isActive: true,
     viewCount: 0,
@@ -176,7 +246,10 @@ export async function getBeautyShareById(id: string) {
   return shares.find((share) => share.id === id) || null;
 }
 
-export async function updateBeautyShare(id: string, patch: Partial<Pick<BeautyShare, "title" | "subtitle" | "clientName" | "theme" | "layout" | "isActive" | "coverFilePath">>) {
+export async function updateBeautyShare(
+  id: string,
+  patch: Partial<Pick<BeautyShare, "title" | "subtitle" | "clientName" | "theme" | "layout" | "isActive" | "coverFilePath" | "customText">>,
+) {
   const shares = await readBeautyShares();
   const index = shares.findIndex((share) => share.id === id);
   if (index === -1) return null;
