@@ -109,7 +109,7 @@ function buildMagazinePages(media: PublicDriveItem[], coverItem: PublicDriveItem
     {
       template: "cover",
       title,
-      eyebrow: "Digital Photo Album",
+      eyebrow: "Private Digital Album",
       items: coverItem ? [coverItem] : orderedMedia.slice(0, 1),
     },
     {
@@ -151,8 +151,8 @@ function buildMagazinePages(media: PublicDriveItem[], coverItem: PublicDriveItem
     },
     {
       template: "back",
-      title: "Delivered with driveOne",
-      eyebrow: "By VJMRTIM",
+      title: "Thank you",
+      eyebrow: "Your delivery is ready",
       items: coverItem ? [coverItem] : orderedMedia.slice(0, 1),
     },
   );
@@ -287,33 +287,11 @@ export function BeautySharePublicClient({
     <main className={`min-h-screen overflow-hidden ${themeClass}`}>
       {showWelcome ? (
         <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-[#d7ff3f] px-6 text-center text-black transition-opacity duration-500">
-          <p className="text-sm font-black uppercase tracking-[0.28em]">driveOne</p>
+          <p className="text-sm font-black uppercase tracking-[0.28em]">Private Album</p>
           <h1 className="mt-5 max-w-3xl text-4xl font-black tracking-tight md:text-7xl">Hello, {clientName}</h1>
           <p className="mt-4 text-lg font-bold">File kamu sudah siap.</p>
         </div>
       ) : null}
-
-      <header className="fixed inset-x-0 top-0 z-40 px-4 py-4 text-white md:px-8">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 rounded-full border border-white/15 bg-black/30 px-4 py-3 shadow-2xl shadow-black/20 backdrop-blur-xl">
-          <a href="#top" className="min-w-0">
-            <p className="text-sm font-black leading-none tracking-tight">driveOne</p>
-            <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-[#d7ff3f]">by VJMRTIM</p>
-          </a>
-          <nav className="flex items-center gap-2">
-            <a href="#album" className="rounded-full px-3 py-2 text-xs font-bold text-white/85 hover:bg-white/10">
-              Open Album
-            </a>
-            <a href="#gallery" className="hidden rounded-full px-3 py-2 text-xs font-bold text-white/85 hover:bg-white/10 sm:inline-flex">
-              View Files
-            </a>
-            {downloadHref ? (
-              <a href={downloadHref} className="hidden rounded-full bg-[#d7ff3f] px-3 py-2 text-xs font-black text-black sm:inline-flex">
-                Download
-              </a>
-            ) : null}
-          </nav>
-        </div>
-      </header>
 
       <AlbumCover
         title={title}
@@ -440,10 +418,10 @@ export function BeautySharePublicClient({
         </div>
       </section>
 
-      <footer className="bg-[#11110f] px-4 py-8 text-xs font-bold text-white/60 md:px-8">
-        <div className="mx-auto flex max-w-7xl flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <span>Delivered with driveOne by VJMRTIM</span>
-          <a href="https://solusivendor.com" target="_blank" rel="noopener noreferrer" className="hover:text-[#d7ff3f]">
+      <footer className="bg-[#11110f] px-4 py-7 text-center text-[11px] font-bold text-white/45 md:px-8">
+        <div className="mx-auto max-w-7xl">
+          <span>Delivered with driveOne by VJMRTIM · </span>
+          <a href="https://solusivendor.com" target="_blank" rel="noopener noreferrer" className="hover:text-white/75">
             Built by solusivendor.com
           </a>
         </div>
@@ -484,10 +462,10 @@ function AlbumCover({
 
       <div className="relative mx-auto grid w-full max-w-6xl items-center gap-10 md:grid-cols-[0.9fr_1.1fr]">
         <div className="order-2 md:order-1">
-          <p className="text-xs font-black uppercase tracking-[0.26em] text-[#d7ff3f]">Digital Album</p>
+          <p className="text-xs font-black uppercase tracking-[0.26em] text-[#d7ff3f]">Private Digital Album</p>
           <h1 className="mt-5 max-w-3xl text-5xl font-black leading-[0.95] tracking-tight md:text-8xl">{title}</h1>
           <p className="mt-6 max-w-xl text-base leading-8 text-white/76 md:text-lg">{subtitle}</p>
-          <p className="mt-4 text-xs font-black uppercase tracking-[0.22em] text-white/50">Delivered with driveOne</p>
+          <p className="mt-4 text-xs font-black uppercase tracking-[0.22em] text-white/50">Your files are ready</p>
           <div className="mt-8 flex flex-wrap gap-3">
             <button type="button" onClick={onOpenAlbum} className="inline-flex items-center gap-2 rounded-full bg-[#d7ff3f] px-5 py-3 text-sm font-black text-black transition hover:bg-[#c8ef34]">
               Open Album
@@ -513,9 +491,9 @@ function AlbumCover({
               {coverSrc ? <img src={coverSrc} alt={title} className="h-full w-full object-cover" /> : null}
               <div className="absolute inset-0 bg-gradient-to-t from-black/[0.82] via-black/[0.16] to-black/20" />
               <div className="absolute inset-x-0 bottom-0 p-7 text-white">
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#d7ff3f]">Digital Photo Album</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#d7ff3f]">Digital Wedding Book</p>
                 <h2 className="mt-3 text-3xl font-black leading-none">{title}</h2>
-                <p className="mt-3 text-xs font-bold uppercase tracking-[0.18em] text-white/54">Delivered with driveOne</p>
+                <p className="mt-3 text-xs font-bold uppercase tracking-[0.18em] text-white/54">Private Digital Album</p>
               </div>
             </div>
           </div>
@@ -545,7 +523,7 @@ function MagazineControls({
   onFullscreen: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-full border border-black/10 bg-white/70 p-1.5 text-[#171717] shadow-lg shadow-black/10 backdrop-blur">
+    <div className="flex flex-wrap items-center gap-1.5 rounded-full border border-black/10 bg-white/60 p-1 text-[#171717] shadow-md shadow-black/10 backdrop-blur">
       <button type="button" aria-label="Previous page" onClick={onPrevious} disabled={pageIndex <= 0} className="rounded-full p-3 transition hover:bg-black/5 disabled:opacity-[0.35]">
         <ArrowLeft className="h-4 w-4" />
       </button>
@@ -561,7 +539,7 @@ function MagazineControls({
       <button type="button" aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"} onClick={onFullscreen} className="rounded-full p-3 transition hover:bg-black/5">
         {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
       </button>
-      <a href="#gallery" className="rounded-full bg-[#d7ff3f] px-4 py-3 text-xs font-black text-black">
+      <a href="#gallery" className="rounded-full bg-[#d7ff3f] px-3.5 py-3 text-xs font-black text-black">
         View gallery
       </a>
     </div>
@@ -597,8 +575,8 @@ function MagazinePageView({
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-black/[0.18]" />
         <div className="relative flex h-full min-h-[560px] flex-col justify-between p-8 md:min-h-[680px] md:p-12">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.28em] text-[#d7ff3f]">Digital Photo Album</p>
-            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.24em] text-white/56">Delivered with driveOne</p>
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-[#d7ff3f]">Digital Wedding Book</p>
+            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.24em] text-white/56">Private Digital Album</p>
           </div>
           <div>
             <h3 className="max-w-xl text-4xl font-black leading-none tracking-tight md:text-6xl">{share.title}</h3>
@@ -660,9 +638,19 @@ function MagazinePageView({
         {coverSrc ? <img src={coverSrc} alt={share.title} loading="lazy" className="absolute inset-0 h-full w-full object-cover opacity-[0.35]" /> : null}
         <div className="absolute inset-0 bg-black/[0.58]" />
         <div className="relative flex h-full min-h-[560px] flex-col items-center justify-center p-8 text-center md:min-h-[680px] md:p-12">
-          <p className="text-xs font-black uppercase tracking-[0.28em] text-[#d7ff3f]">Delivered with driveOne</p>
-          <h3 className="mt-6 text-4xl font-black leading-none md:text-6xl">VJMRTIM</h3>
-          <p className="mt-5 text-sm font-bold text-white/62">Built by solusivendor.com</p>
+          <p className="text-xs font-black uppercase tracking-[0.28em] text-[#d7ff3f]">Thank you</p>
+          <h3 className="mt-6 max-w-md text-4xl font-black leading-none md:text-6xl">Your delivery is ready to download</h3>
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <button type="button" onClick={onGallery} className="rounded-full bg-white px-5 py-3 text-xs font-black text-[#171717]">
+              View files
+            </button>
+            {downloadHref ? (
+              <a href={downloadHref} className="inline-flex items-center gap-2 rounded-full bg-[#d7ff3f] px-5 py-3 text-xs font-black text-black">
+                <Download className="h-4 w-4" />
+                Download
+              </a>
+            ) : null}
+          </div>
         </div>
       </article>
     );
