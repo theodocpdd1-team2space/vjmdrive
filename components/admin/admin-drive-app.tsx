@@ -695,7 +695,7 @@ export default function AdminDriveApp({ embedded = false }: { embedded?: boolean
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-[#d7ff3f] text-black">
                 <HardDrive className="h-6 w-6" />
               </div>
-              <p className="text-sm font-semibold text-[#d7ff3f]">driveOne by VJMRTIM</p>
+              <p className="text-sm font-semibold text-[#d7ff3f]">driveOne </p>
               <h1 className="mt-2 text-4xl font-semibold text-white md:text-6xl">Admin console</h1>
               <p className="mt-4 max-w-lg text-zinc-400">Private access only</p>
             </div>
@@ -888,7 +888,7 @@ export default function AdminDriveApp({ embedded = false }: { embedded?: boolean
               <HardDrive className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-[#d7ff3f]">by VJMRTIM</p>
+              <p className="text-xs font-semibold text-[#d7ff3f]"></p>
               <h1 className="font-semibold text-white">driveOne</h1>
             </div>
           </div>
@@ -1321,7 +1321,7 @@ function SharesView({
                 </p>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
-                <button onClick={() => onCopy(`${origin}/share/${share.token}`)} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"><Copy className="h-4 w-4" />Copy</button>
+                <button onClick={() => onCopy(`${origin}/share/${share.token}`)} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"><Copy className="h-4 w-4" />Copy Link</button>
                 <a href={`/share/${share.token}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"><ExternalLink className="h-4 w-4" />Open</a>
                 <button onClick={() => setRevokeTarget(share)} className="rounded-lg border border-red-300/20 px-3 py-2 text-sm text-red-200 hover:bg-red-500/10">Disable link</button>
               </div>
@@ -1585,7 +1585,7 @@ function ShareModal({
               <span>Emails: {result.allowedEmails.length ? result.allowedEmails.join(", ") : "Public"}</span>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
-              <button onClick={() => onCopy(result.url)} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200"><Copy className="h-4 w-4" />Copy</button>
+              <button onClick={() => onCopy(result.url)} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200"><Copy className="h-4 w-4" />Copy Link</button>
               <a href={result.url || `${origin}/share/${result.token}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-200"><ExternalLink className="h-4 w-4" />Open</a>
             </div>
           </div>

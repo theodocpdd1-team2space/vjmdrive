@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { disableBeautyShare, getBeautyShareById, updateBeautyShare } from "@/lib/beauty-share-db";
+import { deleteBeautyShare, getBeautyShareById, updateBeautyShare } from "@/lib/beauty-share-db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +11,7 @@ async function requireOwner(id: string) {
 
   const share = await getBeautyShareById(id);
   if (!share) return { response: NextResponse.json({ ok: false, message: "Beauty Share not found." }, { status: 404 }) };
-  if (share.ownerUserId !== user.id) {
+  if (share.ownerUserId !== user.id && user.role !== "ADMIN") {
     return { response: NextResponse.json({ ok: false, message: "Access denied." }, { status: 403 }) };
   }
 
@@ -42,6 +42,6 @@ export async function DELETE(_req: Request, ctx: RouteContext<"/api/beauty-share
   const owner = await requireOwner(id);
   if ("response" in owner) return owner.response;
 
-  const updated = await disableBeautyShare(id);
-  return NextResponse.json({ ok: true, share: updated, publicUrl: updated ? `/b/${updated.slug}` : null });
+  const deleted = await deleteBeautyShare(id);
+  return NextResponse.json({ ok: true, deleted });
 }

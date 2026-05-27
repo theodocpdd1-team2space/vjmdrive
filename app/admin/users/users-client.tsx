@@ -6,12 +6,15 @@ import {
   ArrowLeft,
   BadgeCheck,
   Ban,
+  ChevronDown,
+  ChevronUp,
   CheckCircle2,
   Clock,
   Database,
   HardDrive,
   Loader2,
   Mail,
+  Plus,
   Save,
   Search,
   Shield,
@@ -50,6 +53,7 @@ const quotaOptions = [
 const planOptions = ["Free", "Personal", "Pro", "Vendor", "Business", "Custom"];
 
 type FilterMode = "ALL" | "ACTIVE" | "DISABLED" | "VERIFIED" | "UNVERIFIED" | "ADMIN";
+type RoleFilter = "ALL" | "ADMIN" | "USER";
 
 export function AdminUsersClient() {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -57,7 +61,11 @@ export function AdminUsersClient() {
   const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterMode>("ALL");
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>("ALL");
+  const [planFilter, setPlanFilter] = useState("ALL");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [addOpen, setAddOpen] = useState(false);
 
   async function loadUsers() {
     setLoading(true);
@@ -100,6 +108,30 @@ export function AdminUsersClient() {
     await loadUsers();
   }
 
+  async function createAdminUser(input: { email: string; password: string; role: "ADMIN" | "USER"; plan: string; quotaBytes: number | null }) {
+    setNotice("");
+    const res = await fetch("/api/admin/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      throw new Error(data.message || "Create user failed.");
+    }
+    setNotice("User created.");
+    await loadUsers();
+  }
+
+  function toggleExpanded(userId: string) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }
+
   useEffect(() => {
     const timer = window.setTimeout(() => void loadUsers(), 0);
     return () => window.clearTimeout(timer);
@@ -140,6 +172,8 @@ export function AdminUsersClient() {
         user.plan.toLowerCase().includes(keyword);
 
       if (!matchesSearch) return false;
+      if (roleFilter !== "ALL" && user.role !== roleFilter) return false;
+      if (planFilter !== "ALL" && user.plan !== planFilter) return false;
 
       if (filter === "ACTIVE") return !user.disabled;
       if (filter === "DISABLED") return user.disabled;
@@ -149,7 +183,7 @@ export function AdminUsersClient() {
 
       return true;
     });
-  }, [users, query, filter]);
+  }, [users, query, filter, roleFilter, planFilter]);
 
   return (
     <main className="min-h-screen bg-[#08090d] text-zinc-100">
@@ -180,9 +214,15 @@ export function AdminUsersClient() {
             </p>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">Total accounts</p>
-            <p className="mt-1 text-3xl font-black text-white">{metrics.total}</p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <button type="button" onClick={() => setAddOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black">
+              <Plus className="h-4 w-4" />
+              Add User
+            </button>
+            <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">Total accounts</p>
+              <p className="mt-1 text-3xl font-black text-white">{metrics.total}</p>
+            </div>
           </div>
         </div>
       </section>
@@ -198,7 +238,7 @@ export function AdminUsersClient() {
           </div>
 
           <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-4 shadow-2xl shadow-black/20">
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px]">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_190px_190px_190px_auto]">
               <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
                 <Search className="h-4 w-4 shrink-0 text-zinc-500" />
                 <input
@@ -224,6 +264,24 @@ export function AdminUsersClient() {
                   <option value="ADMIN">Admins only</option>
                 </select>
               </label>
+              <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                <Shield className="h-4 w-4 shrink-0 text-zinc-500" />
+                <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as RoleFilter)} className="w-full bg-transparent text-sm font-bold text-white outline-none">
+                  <option value="ALL">All roles</option>
+                  <option value="USER">Users</option>
+                  <option value="ADMIN">Admins</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                <Database className="h-4 w-4 shrink-0 text-zinc-500" />
+                <select value={planFilter} onChange={(event) => setPlanFilter(event.target.value)} className="w-full bg-transparent text-sm font-bold text-white outline-none">
+                  <option value="ALL">All plans</option>
+                  {planOptions.map((plan) => <option key={plan}>{plan}</option>)}
+                </select>
+              </label>
+              <button type="button" onClick={() => { setQuery(""); setFilter("ALL"); setRoleFilter("ALL"); setPlanFilter("ALL"); }} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-300 hover:bg-white/10">
+                Clear
+              </button>
             </div>
 
             {notice ? (
@@ -256,7 +314,9 @@ export function AdminUsersClient() {
 
           {!loading && filteredUsers.length > 0 ? (
             <div className="grid gap-4">
-              {filteredUsers.map((user) => (
+              {filteredUsers.map((user) => {
+                const isExpanded = expanded.has(user.id);
+                return (
                 <article
                   key={user.id}
                   className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/20"
@@ -286,9 +346,15 @@ export function AdminUsersClient() {
                         <div className="flex flex-wrap gap-2">
                           <Pill>{user.role}</Pill>
                           <Pill>{user.plan || "Free"}</Pill>
+                          <button onClick={() => toggleExpanded(user.id)} className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-zinc-300 hover:bg-white/10">
+                            {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                            {isExpanded ? "Collapse" : "Expand"}
+                          </button>
                         </div>
                       </div>
 
+                      {isExpanded ? (
+                      <>
                       <div className="mt-5 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
                         <Info icon={Shield} label="Role" value={user.role} />
                         <Info icon={Database} label="Plan" value={user.plan || "Free"} />
@@ -312,9 +378,11 @@ export function AdminUsersClient() {
                           />
                         </div>
                       </div>
+                      </>
+                      ) : null}
                     </div>
 
-                    <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
+                    {isExpanded ? <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
                       <div className="mb-4 flex items-center justify-between">
                         <div>
                           <p className="font-black text-white">Quick settings</p>
@@ -394,14 +462,23 @@ export function AdminUsersClient() {
                           Reset email soon
                         </button>
                       </div>
-                    </div>
+                    </div> : null}
                   </div>
                 </article>
-              ))}
+              );
+              })}
             </div>
           ) : null}
         </div>
       </section>
+      <AddUserModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onCreate={async (input) => {
+          await createAdminUser(input);
+          setAddOpen(false);
+        }}
+      />
     </main>
   );
 }
@@ -420,6 +497,111 @@ function Metric({
       <Icon className="h-5 w-5 text-[#d7ff3f]" />
       <p className="mt-3 text-xs font-bold uppercase tracking-[0.16em] text-zinc-500">{label}</p>
       <p className="mt-1 text-2xl font-black text-white">{value}</p>
+    </div>
+  );
+}
+
+function AddUserModal({
+  open,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreate: (input: { email: string; password: string; role: "ADMIN" | "USER"; plan: string; quotaBytes: number | null }) => Promise<void>;
+}) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"ADMIN" | "USER">("USER");
+  const [plan, setPlan] = useState("Free");
+  const [quota, setQuota] = useState<string>(String(1024 ** 3));
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  if (!open) return null;
+
+  async function submit() {
+    if (submitting) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      await onCreate({
+        email,
+        password,
+        role,
+        plan,
+        quotaBytes: quota === "unlimited" ? null : Number(quota),
+      });
+      setEmail("");
+      setPassword("");
+      setRole("USER");
+      setPlan("Free");
+      setQuota(String(1024 ** 3));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Create user failed.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4">
+      <div className="max-h-[92vh] w-full overflow-auto rounded-t-3xl border border-white/10 bg-[#101217] p-4 shadow-2xl md:max-w-xl md:rounded-3xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#d7ff3f]">Add User</p>
+            <h2 className="mt-2 text-xl font-black text-white">Create account</h2>
+          </div>
+          <button onClick={onClose} disabled={submitting} className="rounded-xl p-2 text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-50" aria-label="Close add user">
+            <Ban className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-4">
+          <label className="text-sm font-bold text-zinc-300">
+            Email
+            <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm text-white outline-none" required />
+          </label>
+          <label className="text-sm font-bold text-zinc-300">
+            Temporary password
+            <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm text-white outline-none" required />
+          </label>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="text-sm font-bold text-zinc-300">
+              Role
+              <select value={role} onChange={(event) => setRole(event.target.value as "ADMIN" | "USER")} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm text-white outline-none">
+                <option value="USER">USER</option>
+                <option value="ADMIN">ADMIN</option>
+              </select>
+            </label>
+            <label className="text-sm font-bold text-zinc-300">
+              Plan
+              <select value={plan} onChange={(event) => setPlan(event.target.value)} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm text-white outline-none">
+                {planOptions.map((option) => <option key={option}>{option}</option>)}
+              </select>
+            </label>
+            <label className="text-sm font-bold text-zinc-300">
+              Quota
+              <select value={quota} onChange={(event) => setQuota(event.target.value)} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm text-white outline-none">
+                {quotaOptions.map(([label, value]) => (
+                  <option key={String(value)} value={value}>{label}</option>
+                ))}
+                <option value="unlimited">Unlimited</option>
+              </select>
+            </label>
+          </div>
+
+          {error ? <p className="rounded-2xl border border-red-300/20 bg-red-300/10 px-3 py-2 text-sm text-red-100">{error}</p> : null}
+
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button onClick={onClose} disabled={submitting} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:opacity-50">Cancel</button>
+            <button onClick={() => void submit()} disabled={submitting} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black disabled:opacity-60">
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Create User
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -37,7 +37,7 @@ export async function PATCH(req: Request) {
   }
 
   if (typeof body?.brand?.label === "string") {
-    settings.brand.label = body.brand.label.trim() || "by VJMRTIM";
+    settings.brand.label = body.brand.label.trim() || "";
   }
 
   if (typeof body?.storage?.downloadBaseUrl === "string") {

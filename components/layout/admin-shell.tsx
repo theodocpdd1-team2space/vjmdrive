@@ -62,9 +62,6 @@ export function AdminShell({
           </div>
 
           <div className="min-w-0">
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#d7ff3f]">
-              by VJMRTIM
-            </p>
             <p className="truncate text-lg font-black tracking-tight text-white">
               driveOne
             </p>

@@ -360,8 +360,9 @@ export function PreviewModal({
                 <Share2 className="h-4 w-4" />
               </button>
             ) : null}
-            <button type="button" onClick={() => onCopy(copyTarget)} className="rounded-lg border border-white/10 p-2 text-zinc-300 hover:bg-white/10" title="Copy link">
+            <button type="button" onClick={() => onCopy(copyTarget)} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-white/10" title="Copy file link" aria-label="Copy file link">
               <Copy className="h-4 w-4" />
+              <span className="hidden sm:inline">Copy Link</span>
             </button>
             {canDownload && item.directDownloadUrl ? (
               <a href={item.directDownloadUrl} className="inline-flex items-center gap-2 rounded-lg bg-[#d7ff3f] px-3 py-2 text-sm font-semibold text-black">

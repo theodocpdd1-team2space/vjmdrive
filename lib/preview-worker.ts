@@ -1,5 +1,6 @@
 import { spawn } from "child_process";
 import fs from "fs/promises";
+import path from "path";
 import { getCachePaths, getPreviewRoot, getThumbnailRoot } from "./preview-cache";
 import { assertRealPathInsideRoot, resolveSafePath } from "./safe-path";
 
@@ -38,18 +39,11 @@ function runFfmpeg(args: string[]) {
 async function generateThumbnail(inputPath: string, outputPath: string) {
   const tempPath = `${outputPath}.tmp-${process.pid}-${Date.now()}.jpg`;
   await removeIfExists(tempPath);
-  await runFfmpeg([
-    "-y",
-    "-ss",
-    "00:00:05",
-    "-i",
-    inputPath,
-    "-frames:v",
-    "1",
-    "-q:v",
-    "3",
-    tempPath,
-  ]);
+  const isImage = ["jpg", "jpeg", "png", "webp", "gif"].includes(path.extname(inputPath).replace(/^\./, "").toLowerCase());
+  const args = isImage
+    ? ["-y", "-i", inputPath, "-frames:v", "1", "-q:v", "3", tempPath]
+    : ["-y", "-ss", "00:00:05", "-i", inputPath, "-frames:v", "1", "-q:v", "3", tempPath];
+  await runFfmpeg(args);
   await fs.rename(tempPath, outputPath);
 }
 
@@ -100,6 +94,15 @@ export async function processPreviewForPath(relativePath: string) {
 
   if (!thumbnailExists) {
     await generateThumbnail(safePath.absolutePath, cachePaths.thumbnailJpgPath);
+  }
+
+  const extension = path.extname(safePath.relativePath).replace(/^\./, "").toLowerCase();
+  if (["jpg", "jpeg", "png", "webp", "gif"].includes(extension)) {
+    return {
+      previewPath: null,
+      thumbnailPath: cachePaths.thumbnailJpgPath,
+      skipped: thumbnailExists,
+    };
   }
 
   if (!previewExists) {

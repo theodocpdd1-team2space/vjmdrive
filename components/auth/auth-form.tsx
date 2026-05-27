@@ -155,7 +155,6 @@ export function AuthForm({ mode }: { mode: Mode }) {
               <HardDrive className="h-6 w-6" />
             </Link>
 
-            <p className="text-sm font-black uppercase tracking-[0.24em] text-[#d7ff3f]">by VJMRTIM</p>
             <h1 className="mt-2 text-4xl font-black tracking-tight text-white md:text-5xl">driveOne</h1>
             <p className="mt-4 max-w-lg text-zinc-400">
               Private cloud drive for creators, vendors, and digital products.
@@ -280,6 +279,12 @@ export function AuthForm({ mode }: { mode: Mode }) {
 
               <Link href="/" className="text-zinc-500 hover:text-zinc-200">
                 Back to home
+              </Link>
+              <Link href="/terms" className="text-zinc-500 hover:text-zinc-200">
+                Terms
+              </Link>
+              <Link href="/privacy" className="text-zinc-500 hover:text-zinc-200">
+                Privacy
               </Link>
             </div>
           </form>

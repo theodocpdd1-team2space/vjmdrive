@@ -47,7 +47,7 @@ export function defaultSettings(): DriveSettings {
     },
     brand: {
       appName: "driveOne",
-      label: "by VJMRTIM",
+      label: "",
     },
     storage: {
       downloadBaseUrl: process.env.DOWNLOAD_BASE_URL || "",

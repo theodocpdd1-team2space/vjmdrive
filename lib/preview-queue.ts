@@ -14,7 +14,20 @@ export type PreviewQueueItem = {
   updatedAt: string;
 };
 
-const PREVIEW_QUEUE_EXTENSIONS = new Set(["mp4", "mov", "m4v", "webm", "avi", "mkv", "dxv"]);
+const PREVIEW_QUEUE_EXTENSIONS = new Set([
+  "jpg",
+  "jpeg",
+  "png",
+  "webp",
+  "gif",
+  "mp4",
+  "mov",
+  "m4v",
+  "webm",
+  "avi",
+  "mkv",
+  "dxv",
+]);
 
 function queuePath() {
   return path.join(getCacheRoot(), "db", "preview-queue.json");

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isAdmin, readUsers, updateUser, userStoragePath, type UserPlan } from "@/lib/auth";
+import { createUser, isAdmin, normalizeEmail, readUsers, updateUser, userStoragePath, type UserPlan, type UserRole } from "@/lib/auth";
 import { directorySize, storageSummary } from "@/lib/storage";
 
 export const runtime = "nodejs";
@@ -39,4 +39,43 @@ export async function PATCH(req: Request) {
   }
   const user = await updateUser(userId, { quotaBytes, plan, disabled, emailVerified });
   return NextResponse.json({ ok: true, user });
+}
+
+export async function POST(req: Request) {
+  if (!(await isAdmin())) return NextResponse.json({ ok: false }, { status: 401 });
+  const body = await req.json().catch(() => null);
+  const email = typeof body?.email === "string" ? normalizeEmail(body.email) : "";
+  const password = typeof body?.password === "string" ? body.password : "";
+  const role: UserRole = body?.role === "ADMIN" ? "ADMIN" : "USER";
+  const allowedPlans: UserPlan[] = ["Free", "Personal", "Pro", "Vendor", "Business", "Custom"];
+  const plan = allowedPlans.includes(body?.plan) ? (body.plan as UserPlan) : "Free";
+  const quotaBytes = body?.quotaBytes === null ? null : body?.quotaBytes === undefined ? undefined : Number(body.quotaBytes);
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return NextResponse.json({ ok: false, message: "Valid email is required." }, { status: 400 });
+  }
+  if (password.length < 8) {
+    return NextResponse.json({ ok: false, message: "Password must be at least 8 characters." }, { status: 400 });
+  }
+  if (quotaBytes !== undefined && quotaBytes !== null && (!Number.isFinite(quotaBytes) || quotaBytes < 0)) {
+    return NextResponse.json({ ok: false, message: "Invalid quota." }, { status: 400 });
+  }
+
+  try {
+    const user = await createUser({
+      name: email,
+      email,
+      password,
+      role,
+      quotaBytes: quotaBytes === undefined ? undefined : quotaBytes,
+      emailVerified: true,
+    });
+    const updated = await updateUser(user.id, { plan, quotaBytes: quotaBytes === undefined ? user.quotaBytes : quotaBytes });
+    return NextResponse.json({ ok: true, user: updated || user });
+  } catch (caught) {
+    return NextResponse.json(
+      { ok: false, message: caught instanceof Error ? caught.message : "Create user failed." },
+      { status: 400 }
+    );
+  }
 }

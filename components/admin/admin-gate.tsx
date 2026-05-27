@@ -46,7 +46,7 @@ export function AdminGate() {
               </span>
               <div>
                 <h2 className="font-semibold">driveOne Admin</h2>
-                <p className="text-xs text-zinc-500">by VJMRTIM</p>
+                <p className="text-xs text-zinc-500"></p>
               </div>
             </div>
             <label className="mt-6 block text-sm text-zinc-300">

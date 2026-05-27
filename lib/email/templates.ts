@@ -28,7 +28,7 @@ function baseTemplate(input: {
       <tr>
         <td style="background:#08090d;padding:24px">
           <div style="font-size:20px;font-weight:700;color:#ffffff">VJM Drive</div>
-          <div style="margin-top:4px;color:#d7ff3f;font-size:13px">Private visual asset drive by VJMRTIM</div>
+          <div style="margin-top:4px;color:#d7ff3f;font-size:13px">Private visual asset drive </div>
         </td>
       </tr>
       <tr>

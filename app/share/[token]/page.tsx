@@ -216,7 +216,7 @@ export default function SharePage() {
               <HardDrive className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-[#d7ff3f]">driveOne by VJMRTIM</p>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-[#d7ff3f]">driveOne</p>
               <h1 className="truncate font-semibold">{share.name}</h1>
             </div>
           </div>
@@ -337,6 +337,15 @@ export default function SharePage() {
                 </nav>
 
                 <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                  {share.canDownload ? (
+                    <a
+                      href={`/api/share/${token}/zip?path=${encodeURIComponent(path)}`}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#d7ff3f] px-3 py-2 text-xs font-black text-black"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Download Folder
+                    </a>
+                  ) : null}
                   <span>
                     <b className="text-white">{filtered.length}</b> items
                   </span>

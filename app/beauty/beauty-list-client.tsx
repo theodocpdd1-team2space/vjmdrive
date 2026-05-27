@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, ExternalLink, Sparkles, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, Power, Sparkles, Trash2 } from "lucide-react";
 
 type BeautyShareRow = {
   id: string;
@@ -19,16 +19,34 @@ type BeautyShareRow = {
 export function BeautyListClient({ initialShares }: { initialShares: BeautyShareRow[] }) {
   const [shares, setShares] = useState(initialShares);
   const [notice, setNotice] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<BeautyShareRow | null>(null);
 
-  async function disableShare(id: string) {
-    const res = await fetch(`/api/beauty-shares/${id}`, { method: "DELETE" });
+  async function setShareActive(id: string, isActive: boolean) {
+    const res = await fetch(`/api/beauty-shares/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isActive }),
+    });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) {
-      setNotice(data.message || "Disable failed.");
+      setNotice(data.message || "Update failed.");
       return;
     }
-    setShares((current) => current.map((share) => (share.id === id ? { ...share, isActive: false } : share)));
-    setNotice("Beauty Share disabled.");
+    setShares((current) => current.map((share) => (share.id === id ? { ...share, isActive } : share)));
+    setNotice(isActive ? "Beauty Share activated." : "Beauty Share disabled.");
+  }
+
+  async function deleteShare() {
+    if (!deleteTarget) return;
+    const res = await fetch(`/api/beauty-shares/${deleteTarget.id}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      setNotice(data.message || "Delete failed.");
+      return;
+    }
+    setShares((current) => current.filter((share) => share.id !== deleteTarget.id));
+    setNotice("Beauty Share deleted. Original files were not deleted.");
+    setDeleteTarget(null);
   }
 
   return (
@@ -64,18 +82,27 @@ export function BeautyListClient({ initialShares }: { initialShares: BeautyShare
               <div className="mt-5 flex flex-wrap gap-2">
                 <button onClick={() => { void navigator.clipboard.writeText(url); setNotice("Link copied."); }} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm font-bold text-zinc-200 hover:bg-white/10">
                   <Copy className="h-4 w-4" />
-                  Copy
+                  Copy Link
                 </button>
                 <a href={share.publicUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-[#d7ff3f] px-3 py-2 text-sm font-black text-black">
                   <ExternalLink className="h-4 w-4" />
                   Open
                 </a>
                 {share.isActive ? (
-                  <button onClick={() => void disableShare(share.id)} className="inline-flex items-center gap-2 rounded-xl border border-red-300/20 px-3 py-2 text-sm font-bold text-red-100 hover:bg-red-300/10">
-                    <Trash2 className="h-4 w-4" />
+                  <button onClick={() => void setShareActive(share.id, false)} className="inline-flex items-center gap-2 rounded-xl border border-red-300/20 px-3 py-2 text-sm font-bold text-red-100 hover:bg-red-300/10">
+                    <Power className="h-4 w-4" />
                     Disable
                   </button>
-                ) : null}
+                ) : (
+                  <button onClick={() => void setShareActive(share.id, true)} className="inline-flex items-center gap-2 rounded-xl border border-[#d7ff3f]/30 px-3 py-2 text-sm font-bold text-[#d7ff3f] hover:bg-[#d7ff3f]/10">
+                    <Power className="h-4 w-4" />
+                    Activate
+                  </button>
+                )}
+                <button onClick={() => setDeleteTarget(share)} className="inline-flex items-center gap-2 rounded-xl border border-red-300/20 px-3 py-2 text-sm font-bold text-red-100 hover:bg-red-300/10">
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </button>
               </div>
             </article>
           );
@@ -92,6 +119,26 @@ export function BeautyListClient({ initialShares }: { initialShares: BeautyShare
             <p className="mt-1 text-sm text-zinc-500">Create one from a folder in My Drive.</p>
           </div>
         </section>
+      ) : null}
+
+      {deleteTarget ? (
+        <div className="fixed inset-0 z-[120] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4">
+          <div className="w-full rounded-t-3xl border border-white/10 bg-[#101217] p-4 shadow-2xl md:max-w-md md:rounded-3xl">
+            <h2 className="text-xl font-black text-white">Delete Beauty Share?</h2>
+            <p className="mt-3 text-sm leading-6 text-zinc-400">
+              This will remove the Beauty Share link /b/{deleteTarget.slug}. Your original files will not be deleted. The slug can be used again.
+            </p>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => setDeleteTarget(null)} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10">
+                Cancel
+              </button>
+              <button type="button" onClick={() => void deleteShare()} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-red-400 px-4 py-3 text-sm font-black text-black">
+                <Trash2 className="h-4 w-4" />
+                Delete Beauty Share
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );

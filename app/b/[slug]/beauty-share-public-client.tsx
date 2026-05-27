@@ -193,7 +193,7 @@ export function BeautySharePublicClient({
   const clientName = share.clientName || title;
   const coverSrc = previewImage(coverItem || mediaItems.find((item) => item.type === "image") || mediaItems[0] || null);
   const lightboxItem = lightboxIndex === null ? null : mediaItems[lightboxIndex] || null;
-  const downloadHref = items.find((item) => item.directDownloadUrl)?.directDownloadUrl || null;
+  const downloadHref = `/api/b/${share.slug}/zip`;
   const magazinePages = useMemo(() => buildMagazinePages(mediaItems, coverItem, title), [coverItem, mediaItems, title]);
   const currentPage = magazinePages[Math.min(pageIndex, magazinePages.length - 1)];
   const nextPage = magazinePages[pageIndex + 1] || null;
@@ -412,7 +412,7 @@ export function BeautySharePublicClient({
 
           <div id="files" className="mt-10 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {items.map((item) => (
-              <FileCard key={item.path} item={item} onPreview={openLightbox} />
+              <FileCard key={item.path} item={item} slug={share.slug} onPreview={openLightbox} />
             ))}
           </div>
         </div>
@@ -420,7 +420,7 @@ export function BeautySharePublicClient({
 
       <footer className="bg-[#11110f] px-4 py-7 text-center text-[11px] font-bold text-white/45 md:px-8">
         <div className="mx-auto max-w-7xl">
-          <span>Delivered with driveOne by VJMRTIM · </span>
+          <span>Delivered with driveOne · </span>
           <a href="https://solusivendor.com" target="_blank" rel="noopener noreferrer" className="hover:text-white/75">
             Built by solusivendor.com
           </a>
@@ -477,7 +477,7 @@ function AlbumCover({
             {downloadHref ? (
               <a href={downloadHref} className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/20 px-5 py-3 text-sm font-black text-white backdrop-blur transition hover:bg-white/20">
                 <Download className="h-4 w-4" />
-                Download
+                Download all
               </a>
             ) : null}
           </div>
@@ -623,7 +623,7 @@ function MagazinePageView({
             {downloadHref ? (
               <a href={downloadHref} className="inline-flex items-center gap-2 rounded-full bg-[#d7ff3f] px-5 py-3 text-xs font-black text-black">
                 <Download className="h-4 w-4" />
-                Download
+                Download all
               </a>
             ) : null}
           </div>
@@ -647,7 +647,7 @@ function MagazinePageView({
             {downloadHref ? (
               <a href={downloadHref} className="inline-flex items-center gap-2 rounded-full bg-[#d7ff3f] px-5 py-3 text-xs font-black text-black">
                 <Download className="h-4 w-4" />
-                Download
+                Download all
               </a>
             ) : null}
           </div>
@@ -758,7 +758,7 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function FileCard({ item, onPreview }: { item: PublicDriveItem; onPreview: (item: PublicDriveItem) => void }) {
+function FileCard({ item, slug, onPreview }: { item: PublicDriveItem; slug: string; onPreview: (item: PublicDriveItem) => void }) {
   const Icon = iconFor(item);
   const canLightbox = isMedia(item);
 
@@ -785,7 +785,12 @@ function FileCard({ item, onPreview }: { item: PublicDriveItem; onPreview: (item
             Preview
           </a>
         ) : null}
-        {item.directDownloadUrl ? (
+        {item.type === "folder" ? (
+          <a href={`/api/b/${slug}/zip?path=${encodeURIComponent(item.path)}`} className="inline-flex items-center gap-2 rounded-full bg-[#d7ff3f] px-3 py-2 text-xs font-black text-black">
+            <Download className="h-3.5 w-3.5" />
+            Download ZIP
+          </a>
+        ) : item.directDownloadUrl ? (
           <a href={item.directDownloadUrl} className="inline-flex items-center gap-2 rounded-full bg-[#d7ff3f] px-3 py-2 text-xs font-black text-black">
             <Download className="h-3.5 w-3.5" />
             Download

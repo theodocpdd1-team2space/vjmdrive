@@ -194,6 +194,14 @@ export async function disableBeautyShare(id: string) {
   return updateBeautyShare(id, { isActive: false });
 }
 
+export async function deleteBeautyShare(id: string) {
+  const shares = await readBeautyShares();
+  const next = shares.filter((share) => share.id !== id);
+  if (next.length === shares.length) return null;
+  await writeBeautyShares(next);
+  return { id };
+}
+
 export async function incrementBeautyShareView(id: string) {
   const now = new Date().toISOString();
   const shares = await readBeautyShares();

@@ -1,3 +1,4 @@
+import fs from "fs/promises";
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
@@ -63,6 +64,18 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/share/[token
         ok: false,
         code: "FILE_NOT_FOUND",
         message: "File or folder not found.",
+      },
+      { status: 404 }
+    );
+  }
+
+  const folderStat = await fs.stat(resolved.safePath.absolutePath).catch(() => null);
+  if (!folderStat || !folderStat.isDirectory()) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "FOLDER_NOT_FOUND",
+        message: "Folder not found.",
       },
       { status: 404 }
     );

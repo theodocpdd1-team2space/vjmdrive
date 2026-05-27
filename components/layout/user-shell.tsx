@@ -77,9 +77,6 @@ export function UserShell({
 
             <div className="min-w-0">
               <p className="truncate text-lg font-black tracking-tight text-white">driveOne</p>
-              <p className="text-[11px] font-black uppercase tracking-[0.24em] text-[#d7ff3f]">
-                by VJMRTIM
-              </p>
             </div>
           </Link>
 

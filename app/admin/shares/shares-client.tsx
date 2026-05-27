@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   BadgeCheck,
+  ChevronDown,
+  ChevronUp,
   Copy,
   ExternalLink,
   Eye,
@@ -26,6 +28,26 @@ import { EmailChipsInput } from "@/components/common/email-chips-input";
 import type { ShareLink } from "@/lib/share-db";
 
 type FilterMode = "ALL" | "ACTIVE" | "EXPIRED" | "DISABLED" | "PINNED" | "PUBLIC" | "PRIVATE_EMAILS";
+type ShareTypeFilter = "ALL" | "STANDARD" | "BEAUTY";
+
+type AdminBeautyShare = {
+  id: string;
+  slug: string;
+  title: string;
+  rootPath: string;
+  ownerUserId: string;
+  isActive: boolean;
+  viewCount: number;
+  downloadCount: number;
+  createdAt: string;
+  updatedAt: string;
+  publicUrl: string;
+};
+
+type OwnerUser = {
+  id: string;
+  email: string;
+};
 
 type EmailEditorState = {
   emails: string[];
@@ -71,20 +93,41 @@ function formatDate(value: string | null | undefined) {
 
 export function AdminSharesClient({
   initialShares,
+  initialBeautyShares = [],
+  users = [],
   origin,
   now,
 }: {
   initialShares: ShareLink[];
+  initialBeautyShares?: AdminBeautyShare[];
+  users?: OwnerUser[];
   origin: string;
   now: number;
 }) {
   const [shares, setShares] = useState(initialShares);
+  const [beautyShares, setBeautyShares] = useState(initialBeautyShares);
   const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterMode>("ALL");
+  const [typeFilter, setTypeFilter] = useState<ShareTypeFilter>("ALL");
+  const [ownerFilter, setOwnerFilter] = useState("ALL");
   const [updatingToken, setUpdatingToken] = useState<string | null>(null);
   const [editors, setEditors] = useState<Record<string, EmailEditorState>>({});
   const [editShare, setEditShare] = useState<ShareLink | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const ownerEmail = useMemo(() => {
+    return new Map(users.map((user) => [user.id, user.email]));
+  }, [users]);
+
+  function toggleExpanded(key: string) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   function getEditor(share: ShareLink) {
     return (
@@ -173,6 +216,24 @@ export function AdminSharesClient({
     setNotice("Link copied.");
   }
 
+  async function patchBeautyShare(id: string, patch: Record<string, unknown>) {
+    setNotice("");
+    const res = await fetch(`/api/beauty-shares/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      setNotice(data.message || "Beauty Share update failed.");
+      return;
+    }
+    setBeautyShares((current) =>
+      current.map((share) => (share.id === id ? { ...share, isActive: Boolean(patch.isActive) } : share))
+    );
+    setNotice(Boolean(patch.isActive) ? "Beauty Share activated." : "Beauty Share disabled.");
+  }
+
   async function saveEmails(share: ShareLink) {
     const editor = getEditor(share);
     const emails = uniqueEmails(editor.emails);
@@ -233,11 +294,14 @@ export function AdminSharesClient({
         share.title.toLowerCase().includes(keyword) ||
         share.name.toLowerCase().includes(keyword) ||
         share.rootPath.toLowerCase().includes(keyword) ||
+        ownerEmail.get(share.ownerUserId)?.toLowerCase().includes(keyword) ||
         share.token.toLowerCase().includes(keyword) ||
         share.allowedEmails.some((email) => email.toLowerCase().includes(keyword));
 
       if (!matchesQuery) return false;
 
+      if (typeFilter === "BEAUTY") return false;
+      if (ownerFilter !== "ALL" && share.ownerUserId !== ownerFilter) return false;
       if (filter === "ACTIVE") return status === "ACTIVE";
       if (filter === "EXPIRED") return status === "EXPIRED";
       if (filter === "DISABLED") return status === "DISABLED";
@@ -247,7 +311,29 @@ export function AdminSharesClient({
 
       return true;
     });
-  }, [sortedShares, query, filter, now]);
+  }, [sortedShares, query, filter, now, typeFilter, ownerFilter, ownerEmail]);
+
+  const filteredBeautyShares = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    return beautyShares.filter((share) => {
+      const owner = ownerEmail.get(share.ownerUserId) || "";
+      const status = share.isActive ? "ACTIVE" : "DISABLED";
+      const matchesQuery =
+        !keyword ||
+        share.title.toLowerCase().includes(keyword) ||
+        share.slug.toLowerCase().includes(keyword) ||
+        share.rootPath.toLowerCase().includes(keyword) ||
+        owner.toLowerCase().includes(keyword);
+      if (!matchesQuery) return false;
+      if (typeFilter === "STANDARD") return false;
+      if (ownerFilter !== "ALL" && share.ownerUserId !== ownerFilter) return false;
+      if (filter === "ACTIVE") return status === "ACTIVE";
+      if (filter === "DISABLED") return status === "DISABLED";
+      if (filter === "PUBLIC") return true;
+      if (filter === "PRIVATE_EMAILS" || filter === "PINNED" || filter === "EXPIRED") return false;
+      return true;
+    });
+  }, [beautyShares, filter, ownerEmail, ownerFilter, query, typeFilter]);
 
   return (
     <main className="min-h-screen bg-[#08090d] text-zinc-100">
@@ -297,7 +383,7 @@ export function AdminSharesClient({
           </div>
 
           <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-4 shadow-2xl shadow-black/20">
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px]">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_190px_190px_220px_auto]">
               <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
                 <Search className="h-4 w-4 shrink-0 text-zinc-500" />
                 <input
@@ -324,6 +410,26 @@ export function AdminSharesClient({
                   <option value="DISABLED">Disabled only</option>
                 </select>
               </label>
+              <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                <Link2 className="h-4 w-4 shrink-0 text-zinc-500" />
+                <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as ShareTypeFilter)} className="w-full bg-transparent text-sm font-bold text-white outline-none">
+                  <option value="ALL">All types</option>
+                  <option value="STANDARD">Standard shares</option>
+                  <option value="BEAUTY">Beauty shares</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                <Mail className="h-4 w-4 shrink-0 text-zinc-500" />
+                <select value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)} className="w-full bg-transparent text-sm font-bold text-white outline-none">
+                  <option value="ALL">All owners</option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>{user.email}</option>
+                  ))}
+                </select>
+              </label>
+              <button type="button" onClick={() => { setQuery(""); setFilter("ALL"); setTypeFilter("ALL"); setOwnerFilter("ALL"); }} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-300 hover:bg-white/10">
+                Clear
+              </button>
             </div>
 
             {notice ? (
@@ -339,6 +445,8 @@ export function AdminSharesClient({
               const status = getShareStatus(share, now);
               const editor = getEditor(share);
               const isUpdating = updatingToken === share.token;
+              const cardKey = `standard:${share.token}`;
+              const isExpanded = expanded.has(cardKey);
 
               return (
                 <article
@@ -368,6 +476,13 @@ export function AdminSharesClient({
                         </div>
 
                         <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => toggleExpanded(cardKey)}
+                            className="inline-flex items-center gap-2 rounded-2xl border border-white/10 px-3 py-2 text-sm font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
+                          >
+                            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            {isExpanded ? "Collapse" : "Expand"}
+                          </button>
                           <button
                             onClick={() => setEditShare(share)}
                             disabled={isUpdating || Boolean(share.disabledAt)}
@@ -410,9 +525,9 @@ export function AdminSharesClient({
                         </div>
                       </div>
 
-                      <p className="mt-4 break-all rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-xs text-zinc-300">
+                      {isExpanded ? <p className="mt-4 break-all rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-xs text-zinc-300">
                         {url}
-                      </p>
+                      </p> : null}
 
                       <div className="mt-4 grid gap-3 text-sm md:grid-cols-3">
                         <Info label="Created" value={formatDate(share.createdAt)} />
@@ -420,7 +535,7 @@ export function AdminSharesClient({
                         <Info label="Expires" value={formatDate(share.expiresAt)} />
                       </div>
 
-                      <div className="mt-4 rounded-3xl border border-white/10 bg-black/20 p-4">
+                      {isExpanded ? <div className="mt-4 rounded-3xl border border-white/10 bg-black/20 p-4">
                         <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                           <div>
                             <p className="font-black text-white">Allowed emails</p>
@@ -478,10 +593,10 @@ export function AdminSharesClient({
                             </button>
                           ))}
                         </div>
-                      </div>
+                      </div> : null}
                     </div>
 
-                    <aside className="rounded-3xl border border-white/10 bg-black/20 p-4">
+                    {isExpanded ? <aside className="rounded-3xl border border-white/10 bg-black/20 p-4">
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="font-black text-white">Share settings</p>
@@ -554,13 +669,71 @@ export function AdminSharesClient({
                           {share.disabledAt ? "Already Disabled" : "Disable link"}
                         </button>
                       </div>
-                    </aside>
+                    </aside> : null}
                   </div>
                 </article>
               );
             })}
 
-            {filteredShares.length === 0 ? (
+            {filteredBeautyShares.map((share) => {
+              const url = `${origin}${share.publicUrl}`;
+              const owner = ownerEmail.get(share.ownerUserId) || share.ownerUserId;
+              const cardKey = `beauty:${share.id}`;
+              const isExpanded = expanded.has(cardKey);
+
+              return (
+                <article key={cardKey} className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/20">
+                  <div className="p-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="truncate text-lg font-black text-white">{share.title}</h2>
+                          <Pill>Beauty Share</Pill>
+                          <StatusBadge status={share.isActive ? "ACTIVE" : "DISABLED"} />
+                          <Pill>Public</Pill>
+                        </div>
+                        <p className="mt-2 truncate text-sm text-zinc-500">{owner}</p>
+                        <p className="mt-1 truncate text-sm text-zinc-500">{share.rootPath}</p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <button onClick={() => toggleExpanded(cardKey)} className="inline-flex items-center gap-2 rounded-2xl border border-white/10 px-3 py-2 text-sm font-bold text-zinc-300 hover:bg-white/10">
+                          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          {isExpanded ? "Collapse" : "Expand"}
+                        </button>
+                        <button onClick={() => void copy(url)} className="inline-flex items-center gap-2 rounded-2xl border border-white/10 px-3 py-2 text-sm font-bold text-zinc-300 hover:bg-white/10">
+                          <Copy className="h-4 w-4" />
+                          Copy
+                        </button>
+                        <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-2xl border border-white/10 px-3 py-2 text-sm font-bold text-zinc-300 hover:bg-white/10">
+                          <ExternalLink className="h-4 w-4" />
+                          Open
+                        </a>
+                        <button onClick={() => void patchBeautyShare(share.id, { isActive: !share.isActive })} className="inline-flex items-center gap-2 rounded-2xl border border-white/10 px-3 py-2 text-sm font-bold text-zinc-300 hover:bg-white/10">
+                          {share.isActive ? "Disable" : "Activate"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 text-sm md:grid-cols-4">
+                      <Info label="Views" value={String(share.viewCount)} />
+                      <Info label="Downloads" value={String(share.downloadCount)} />
+                      <Info label="Created" value={formatDate(share.createdAt)} />
+                      <Info label="Updated" value={formatDate(share.updatedAt)} />
+                    </div>
+
+                    {isExpanded ? (
+                      <div className="mt-4 rounded-3xl border border-white/10 bg-black/20 p-4">
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-zinc-500">Public URL</p>
+                        <p className="mt-2 break-all text-xs text-zinc-300">{url}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })}
+
+            {filteredShares.length === 0 && filteredBeautyShares.length === 0 ? (
               <section className="flex h-72 flex-col items-center justify-center gap-3 rounded-3xl border border-white/10 bg-white/[0.035] p-8 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-3xl border border-white/10 bg-white/[0.04] text-[#d7ff3f]">
                   <Link2 className="h-7 w-7" />

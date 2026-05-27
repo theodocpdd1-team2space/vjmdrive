@@ -3,8 +3,8 @@ import { readSettings } from "@/lib/settings";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "VJMRTIM Asset Drive",
-  description: "Private local asset drive for VJMRTIM.",
+  title: "driveOne",
+  description: "Cloud storage and file sharing for driveOne.",
 };
 
 export default async function RootLayout({

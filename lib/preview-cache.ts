@@ -208,7 +208,17 @@ export async function getPreviewMetadata(
     };
   }
 
-  if (["jpg", "jpeg", "png", "webp", "gif", "svg", "pdf", "txt", "json", "md", "xml", "html", "css", "js", "ts", "tsx", "jsx", "py", "php", "sql", "log", "csv", "mp3", "wav", "aac", "m4a", "flac", "ogg"].includes(extension)) {
+  if (["jpg", "jpeg", "png", "webp", "gif"].includes(extension)) {
+    const thumbnailPath = await findThumbnailCachePath(relativePath, stat);
+    return {
+      previewStatus: "native" as PreviewStatus,
+      previewUrl: originalUrl,
+      thumbnailUrl: thumbnailPath ? createThumbnailUrl(relativePath) : null,
+      originalUrl,
+    };
+  }
+
+  if (["svg", "pdf", "txt", "json", "md", "xml", "html", "css", "js", "ts", "tsx", "jsx", "py", "php", "sql", "log", "csv", "mp3", "wav", "aac", "m4a", "flac", "ogg"].includes(extension)) {
     return {
       previewStatus: "native" as PreviewStatus,
       previewUrl: originalUrl,

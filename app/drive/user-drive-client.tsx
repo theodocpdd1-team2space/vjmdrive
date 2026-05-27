@@ -51,6 +51,103 @@ type ShareResult = {
   failedEmails: string[];
 };
 
+type UploadStatus = "pending" | "uploading" | "uploaded" | "failed";
+
+type UploadSelection = {
+  id: string;
+  file: File;
+  name: string;
+  relativePath: string;
+  status: UploadStatus;
+  error?: string;
+};
+
+type FileSystemEntryLike = {
+  name: string;
+  fullPath?: string;
+  isFile: boolean;
+  isDirectory: boolean;
+};
+
+type FileSystemFileEntryLike = FileSystemEntryLike & {
+  file: (success: (file: File) => void, error?: (error: DOMException) => void) => void;
+};
+
+type FileSystemDirectoryEntryLike = FileSystemEntryLike & {
+  createReader: () => {
+    readEntries: (success: (entries: FileSystemEntryLike[]) => void, error?: (error: DOMException) => void) => void;
+  };
+};
+
+type DataTransferItemWithEntry = DataTransferItem & {
+  webkitGetAsEntry?: () => FileSystemEntryLike | null;
+};
+
+function uploadId(file: File, relativePath: string) {
+  return `${relativePath || file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`;
+}
+
+function fileFromEntry(entry: FileSystemFileEntryLike) {
+  return new Promise<File>((resolve, reject) => entry.file(resolve, reject));
+}
+
+function readDirectoryEntries(entry: FileSystemDirectoryEntryLike) {
+  const reader = entry.createReader();
+  const entries: FileSystemEntryLike[] = [];
+
+  return new Promise<FileSystemEntryLike[]>((resolve, reject) => {
+    function readBatch() {
+      reader.readEntries((batch) => {
+        if (!batch.length) {
+          resolve(entries);
+          return;
+        }
+        entries.push(...batch);
+        readBatch();
+      }, reject);
+    }
+
+    readBatch();
+  });
+}
+
+async function selectionsFromEntry(entry: FileSystemEntryLike, parentPath = ""): Promise<UploadSelection[]> {
+  const relativePath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
+
+  if (entry.isFile) {
+    const file = await fileFromEntry(entry as FileSystemFileEntryLike);
+    return [{ id: uploadId(file, relativePath), file, name: file.name, relativePath, status: "pending" }];
+  }
+
+  if (entry.isDirectory) {
+    const children = await readDirectoryEntries(entry as FileSystemDirectoryEntryLike);
+    const nested = await Promise.all(children.map((child) => selectionsFromEntry(child, relativePath)));
+    return nested.flat();
+  }
+
+  return [];
+}
+
+async function selectionsFromFileList(files: FileList | File[], folderUpload = false) {
+  return Array.from(files).map((file) => {
+    const relativePath = folderUpload ? (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name : file.name;
+    return { id: uploadId(file, relativePath), file, name: file.name, relativePath, status: "pending" as const };
+  });
+}
+
+async function selectionsFromDrop(dataTransfer: DataTransfer) {
+  const entryItems = Array.from(dataTransfer.items || [])
+    .map((item) => (item as DataTransferItemWithEntry).webkitGetAsEntry?.() as FileSystemEntryLike | null | undefined)
+    .filter((entry): entry is FileSystemEntryLike => Boolean(entry));
+
+  if (entryItems.length) {
+    const nested = await Promise.all(entryItems.map((entry) => selectionsFromEntry(entry)));
+    return nested.flat();
+  }
+
+  return selectionsFromFileList(dataTransfer.files || []);
+}
+
 function suggestSlug(value: string) {
   return value
     .trim()
@@ -74,8 +171,9 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
   const [items, setItems] = useState<DriveItem[]>([]);
   const [path, setPath] = useState("");
   const [loading, setLoading] = useState(true);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [uploadSelections, setUploadSelections] = useState<UploadSelection[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -89,7 +187,6 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
   const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState("Please keep this page open.");
 
   const load = useCallback(async (nextPath: string) => {
     setLoading(true);
@@ -112,50 +209,79 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
     setNotice(data.message || "Failed to load drive.");
   }, []);
 
-  async function upload(files: FileList | null, folderUpload = false) {
-    if (!files?.length || uploading) return;
+  function addUploadSelections(next: UploadSelection[]) {
+    if (!next.length) return;
+    setUploadSelections((current) => [...current, ...next]);
+    setUploadModalOpen(true);
+    setNotice("");
+  }
 
-    const selectedFiles = Array.from(files);
+  async function addFiles(files: FileList | null, folderUpload = false) {
+    if (!files?.length) return;
+    addUploadSelections(await selectionsFromFileList(files, folderUpload));
+  }
+
+  async function uploadOne(selection: UploadSelection) {
     const form = new FormData();
     form.set("path", path);
-    selectedFiles.forEach((file) => {
-      form.append("files", file);
-      form.append("relativePaths", folderUpload ? (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name : "");
+    form.append("files", selection.file);
+    form.append("relativePaths", selection.relativePath || selection.file.name);
+
+    const res = await fetch("/api/files/upload", {
+      method: "POST",
+      body: form,
     });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.ok) {
+      throw new Error(data.message || "Upload failed.");
+    }
+  }
+
+  async function uploadSelected() {
+    if (uploading) return;
+    const pending = uploadSelections.filter((item) => item.status === "pending" || item.status === "failed");
+    if (!pending.length) return;
 
     setUploading(true);
-    setProgress(0);
     setNotice("");
-    setUploadStatus(folderUpload ? `Uploading folder: 0/${selectedFiles.length} files` : `Uploading ${selectedFiles.length} file(s)`);
+    setUploadSelections((current) =>
+      current.map((item) => (item.status === "failed" ? { ...item, status: "pending", error: undefined } : item))
+    );
 
-    await new Promise<void>((resolve) => {
-      const xhr = new XMLHttpRequest();
+    let cursor = 0;
+    const concurrency = Math.min(3, pending.length);
 
-      xhr.open("POST", "/api/files/upload");
+    async function worker() {
+      for (;;) {
+        const index = cursor;
+        cursor += 1;
+        const selection = pending[index];
+        if (!selection) return;
 
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          setProgress(Math.round((event.loaded / event.total) * 100));
+        setUploadSelections((current) =>
+          current.map((item) => (item.id === selection.id ? { ...item, status: "uploading", error: undefined } : item))
+        );
+
+        try {
+          await uploadOne(selection);
+          setUploadSelections((current) =>
+            current.map((item) => (item.id === selection.id ? { ...item, status: "uploaded", error: undefined } : item))
+          );
+        } catch (caught) {
+          setUploadSelections((current) =>
+            current.map((item) =>
+              item.id === selection.id
+                ? { ...item, status: "failed", error: caught instanceof Error ? caught.message : "Upload failed." }
+                : item
+            )
+          );
         }
-      };
+      }
+    }
 
-      xhr.onload = () => {
-        const data = JSON.parse(xhr.responseText || "{}");
-        const uploadedCount = Array.isArray(data.uploaded) ? data.uploaded.length : selectedFiles.length;
-        setNotice(xhr.status >= 400 || !data.ok ? data.message || "Upload failed." : `Uploaded ${uploadedCount}/${selectedFiles.length} file(s).`);
-        resolve();
-      };
-
-      xhr.onerror = () => {
-        setNotice("Upload failed.");
-        resolve();
-      };
-
-      xhr.send(form);
-    });
-
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
     setUploading(false);
-    setProgress(100);
     await load(path);
   }
 
@@ -351,8 +477,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
             setViewMode={setViewMode}
             uploading={uploading}
             onNewFolder={() => setFolderModalOpen(true)}
-            onUploadFiles={(files) => void upload(files)}
-            onUploadFolder={(files) => void upload(files, true)}
+            onOpenUpload={() => setUploadModalOpen(true)}
             onShareCurrent={() => {
               setShareTarget(currentFolderItem());
               setShareResult(null);
@@ -366,7 +491,6 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
             filteredItems={filteredItems}
             selectedPaths={selectedPaths}
             viewMode={viewMode}
-            setViewMode={setViewMode}
             load={load}
             setPreviewItem={setPreviewItem}
             toggleSelect={toggleSelect}
@@ -406,9 +530,20 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
           }}
         />
 
-        {uploading ? (
-          <UploadProgress progress={progress} status={uploadStatus} />
-        ) : null}
+        <UploadModal
+          open={uploadModalOpen}
+          path={path}
+          selections={uploadSelections}
+          uploading={uploading}
+          onAddFiles={(files, folderUpload) => void addFiles(files, folderUpload)}
+          onDropFiles={(dataTransfer) => void selectionsFromDrop(dataTransfer).then(addUploadSelections)}
+          onClear={() => setUploadSelections([])}
+          onRemove={(id) => setUploadSelections((current) => current.filter((item) => item.id !== id))}
+          onUpload={() => void uploadSelected()}
+          onClose={() => {
+            if (!uploading) setUploadModalOpen(false);
+          }}
+        />
 
         <DeleteConfirmModal
           item={deleteTarget}
@@ -455,7 +590,6 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
             </div>
             <div className="min-w-0">
               <p className="truncate text-lg font-black tracking-tight text-white">driveOne</p>
-              <p className="text-[11px] font-black uppercase tracking-[0.24em] text-[#d7ff3f]">by VJMRTIM</p>
             </div>
           </Link>
 
@@ -620,8 +754,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
               setViewMode={setViewMode}
               uploading={uploading}
               onNewFolder={() => setFolderModalOpen(true)}
-              onUploadFiles={(files) => void upload(files)}
-              onUploadFolder={(files) => void upload(files, true)}
+              onOpenUpload={() => setUploadModalOpen(true)}
               onShareCurrent={() => {
                 setShareTarget(currentFolderItem());
                 setShareResult(null);
@@ -631,12 +764,11 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
             />
 
             <section className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/20">
-              <div className="flex flex-col gap-3 border-b border-white/10 p-3 md:flex-row md:items-center md:justify-between">
+              <div className="border-b border-white/10 p-3">
                 <div>
                   <p className="text-sm font-black text-white">Files</p>
                   <p className="mt-1 text-xs text-zinc-500">Open, preview, download, or share your own files.</p>
                 </div>
-                <ViewToggle value={viewMode} onChange={setViewMode} />
               </div>
               {loading ? (
                 <div className="flex h-72 items-center justify-center gap-2 text-zinc-400">
@@ -692,7 +824,12 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
                           {item.type === "folder" ? <Folder className="h-4 w-4" /> : <File className="h-4 w-4" />}
                           {item.type === "folder" ? "Open" : "Preview"}
                         </button>
-                        {item.directDownloadUrl ? (
+                        {item.type === "folder" ? (
+                          <a href={`/api/user/files/zip?path=${encodeURIComponent(item.path)}`} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white">
+                            <Download className="h-4 w-4" />
+                            Download
+                          </a>
+                        ) : item.directDownloadUrl ? (
                           <a href={item.directDownloadUrl} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white">
                             <Download className="h-4 w-4" />
                             Download
@@ -753,20 +890,20 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
         }}
       />
 
-      {uploading ? (
-        <div className="fixed inset-x-3 bottom-3 z-[70] rounded-3xl border border-white/10 bg-[#101217]/95 p-4 shadow-2xl shadow-black/40 backdrop-blur md:left-auto md:right-6 md:w-96">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-black text-white">Uploading files</p>
-              <p className="mt-1 text-xs text-zinc-500">{uploadStatus}</p>
-            </div>
-            <span className="text-sm font-black text-[#d7ff3f]">{progress}%</span>
-          </div>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full rounded-full bg-[#d7ff3f] transition-all" style={{ width: `${progress}%` }} />
-          </div>
-        </div>
-      ) : null}
+      <UploadModal
+        open={uploadModalOpen}
+        path={path}
+        selections={uploadSelections}
+        uploading={uploading}
+        onAddFiles={(files, folderUpload) => void addFiles(files, folderUpload)}
+        onDropFiles={(dataTransfer) => void selectionsFromDrop(dataTransfer).then(addUploadSelections)}
+        onClear={() => setUploadSelections([])}
+        onRemove={(id) => setUploadSelections((current) => current.filter((item) => item.id !== id))}
+        onUpload={() => void uploadSelected()}
+        onClose={() => {
+          if (!uploading) setUploadModalOpen(false);
+        }}
+      />
 
       <DeleteConfirmModal
         item={deleteTarget}
@@ -798,8 +935,7 @@ function UserDriveToolbar({
   setViewMode,
   uploading,
   onNewFolder,
-  onUploadFiles,
-  onUploadFolder,
+  onOpenUpload,
   onShareCurrent,
   onSelectAll,
   onClear,
@@ -810,8 +946,7 @@ function UserDriveToolbar({
   setViewMode: (value: ViewMode) => void;
   uploading: boolean;
   onNewFolder: () => void;
-  onUploadFiles: (files: FileList | null) => void;
-  onUploadFolder: (files: FileList | null) => void;
+  onOpenUpload: () => void;
   onShareCurrent: () => void;
   onSelectAll: () => void;
   onClear: () => void;
@@ -829,36 +964,15 @@ function UserDriveToolbar({
             New Folder
           </button>
 
-          <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-300 transition hover:bg-white/10 hover:text-white">
+          <button
+            type="button"
+            onClick={onOpenUpload}
+            disabled={uploading}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-300 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
             <Upload className="h-4 w-4" />
-            Upload Files
-            <input
-              type="file"
-              multiple
-              className="hidden"
-              disabled={uploading}
-              onChange={(event) => {
-                onUploadFiles(event.target.files);
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
-
-          <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-300 transition hover:bg-white/10 hover:text-white">
-            <Folder className="h-4 w-4" />
-            Upload Folder
-            <input
-              type="file"
-              multiple
-              className="hidden"
-              disabled={uploading}
-              {...{ webkitdirectory: "", directory: "" }}
-              onChange={(event) => {
-                onUploadFolder(event.target.files);
-                event.currentTarget.value = "";
-              }}
-            />
-          </label>
+            Upload
+          </button>
 
           <button
             type="button"
@@ -904,7 +1018,6 @@ function FileList({
   filteredItems,
   selectedPaths,
   viewMode,
-  setViewMode,
   load,
   setPreviewItem,
   toggleSelect,
@@ -915,7 +1028,6 @@ function FileList({
   filteredItems: DriveItem[];
   selectedPaths: Set<string>;
   viewMode: ViewMode;
-  setViewMode: (value: ViewMode) => void;
   load: (path: string) => Promise<void>;
   setPreviewItem: (item: DriveItem) => void;
   toggleSelect: (path: string) => void;
@@ -924,12 +1036,11 @@ function FileList({
 }) {
   return (
     <section className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/20">
-      <div className="flex flex-col gap-3 border-b border-white/10 p-3 md:flex-row md:items-center md:justify-between">
+      <div className="border-b border-white/10 p-3">
         <div>
           <p className="text-sm font-black text-white">Files</p>
           <p className="mt-1 text-xs text-zinc-500">Open, preview, download, or share your own files.</p>
         </div>
-        <ViewToggle value={viewMode} onChange={setViewMode} />
       </div>
       {loading ? (
         <div className="flex h-72 items-center justify-center gap-2 text-zinc-400">
@@ -986,7 +1097,12 @@ function FileList({
                   {item.type === "folder" ? <Folder className="h-4 w-4" /> : <File className="h-4 w-4" />}
                   {item.type === "folder" ? "Open" : "Preview"}
                 </button>
-                {item.directDownloadUrl ? (
+                {item.type === "folder" ? (
+                  <a href={`/api/user/files/zip?path=${encodeURIComponent(item.path)}`} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white">
+                    <Download className="h-4 w-4" />
+                    Download
+                  </a>
+                ) : item.directDownloadUrl ? (
                   <a href={item.directDownloadUrl} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white">
                     <Download className="h-4 w-4" />
                     Download
@@ -1015,18 +1131,177 @@ function FileList({
   );
 }
 
-function UploadProgress({ progress, status }: { progress: number; status: string }) {
+function UploadModal({
+  open,
+  path,
+  selections,
+  uploading,
+  onAddFiles,
+  onDropFiles,
+  onClear,
+  onRemove,
+  onUpload,
+  onClose,
+}: {
+  open: boolean;
+  path: string;
+  selections: UploadSelection[];
+  uploading: boolean;
+  onAddFiles: (files: FileList | null, folderUpload?: boolean) => void;
+  onDropFiles: (dataTransfer: DataTransfer) => void;
+  onClear: () => void;
+  onRemove: (id: string) => void;
+  onUpload: () => void;
+  onClose: () => void;
+}) {
+  const [dragActive, setDragActive] = useState(false);
+
+  if (!open) return null;
+
+  const total = selections.length;
+  const uploaded = selections.filter((item) => item.status === "uploaded").length;
+  const failed = selections.filter((item) => item.status === "failed").length;
+  const pending = selections.filter((item) => item.status === "pending").length;
+  const current = selections.find((item) => item.status === "uploading");
+  const complete = total > 0 && uploaded + failed === total && !uploading;
+  const title = complete ? (failed ? "Upload partially complete" : "Upload complete") : uploading ? "Uploading files" : "Upload files";
+  const percent = total ? Math.round((uploaded / total) * 100) : 0;
+
   return (
-    <div className="fixed inset-x-3 bottom-3 z-[70] rounded-3xl border border-white/10 bg-[#101217]/95 p-4 shadow-2xl shadow-black/40 backdrop-blur md:left-auto md:right-6 md:w-96">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-black text-white">Uploading files</p>
-          <p className="mt-1 text-xs text-zinc-500">{status}</p>
+    <div className="fixed inset-0 z-[110] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4">
+      <div className="max-h-[92vh] w-full overflow-auto rounded-t-3xl border border-white/10 bg-[#101217] p-4 shadow-2xl md:max-w-2xl md:rounded-3xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#d7ff3f]">Current folder: {path || "Home"}</p>
+            <h2 className="mt-2 text-xl font-black text-white">{title}</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              {total ? `${uploaded} / ${total} uploaded` : "Drag files here or choose files from your device."}
+              {failed ? ` · ${failed} failed` : ""}
+            </p>
+          </div>
+          <button onClick={onClose} disabled={uploading} className="rounded-xl p-2 text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-50" aria-label="Close upload modal">
+            <X className="h-5 w-5" />
+          </button>
         </div>
-        <span className="text-sm font-black text-[#d7ff3f]">{progress}%</span>
-      </div>
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-        <div className="h-full rounded-full bg-[#d7ff3f] transition-all" style={{ width: `${progress}%` }} />
+
+        <div
+          onDragEnter={(event) => {
+            event.preventDefault();
+            setDragActive(true);
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragActive(true);
+          }}
+          onDragLeave={(event) => {
+            event.preventDefault();
+            setDragActive(false);
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragActive(false);
+            onDropFiles(event.dataTransfer);
+          }}
+          className={`mt-5 rounded-3xl border border-dashed p-6 text-center transition ${
+            dragActive ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/15 bg-black/20"
+          }`}
+        >
+          <Upload className="mx-auto h-8 w-8 text-[#d7ff3f]" />
+          <p className="mt-3 font-black text-white">Drag and drop files or folders</p>
+          <p className="mt-1 text-sm text-zinc-500">Folder paths are preserved when your browser provides them.</p>
+
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black">
+              <File className="h-4 w-4" />
+              Browse files
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                disabled={uploading}
+                onChange={(event) => {
+                  onAddFiles(event.target.files, false);
+                  event.currentTarget.value = "";
+                }}
+              />
+            </label>
+
+            <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10">
+              <Folder className="h-4 w-4" />
+              Browse folder
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                disabled={uploading}
+                {...{ webkitdirectory: "", directory: "" }}
+                onChange={(event) => {
+                  onAddFiles(event.target.files, true);
+                  event.currentTarget.value = "";
+                }}
+              />
+            </label>
+          </div>
+        </div>
+
+        {total ? (
+          <div className="mt-5 rounded-3xl border border-white/10 bg-black/20 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-black text-white">{uploaded} / {total} uploaded</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Current: {current?.name || (complete ? "Done" : pending ? "Ready" : "-")} · Failed: {failed}
+                </p>
+              </div>
+              <span className="text-sm font-black text-[#d7ff3f]">{percent}%</span>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+              <div className="h-full rounded-full bg-[#d7ff3f] transition-all" style={{ width: `${percent}%` }} />
+            </div>
+
+            <div className="mt-4 max-h-56 space-y-2 overflow-auto pr-1">
+              {selections.map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-white">{item.relativePath || item.name}</p>
+                    {item.error ? <p className="mt-1 text-xs text-red-200">{item.error}</p> : null}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${
+                      item.status === "uploaded"
+                        ? "bg-[#d7ff3f]/10 text-[#d7ff3f]"
+                        : item.status === "failed"
+                          ? "bg-red-300/10 text-red-100"
+                          : item.status === "uploading"
+                            ? "bg-blue-300/10 text-blue-100"
+                            : "bg-white/10 text-zinc-400"
+                    }`}>
+                      {item.status}
+                    </span>
+                    {!uploading && item.status !== "uploaded" ? (
+                      <button type="button" onClick={() => onRemove(item.id)} className="rounded-lg p-1 text-zinc-500 hover:bg-white/10 hover:text-white" aria-label={`Remove ${item.name}`}>
+                        <X className="h-4 w-4" />
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onClear} disabled={uploading || !total} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:opacity-50">
+            Clear selected files
+          </button>
+          <button type="button" onClick={onClose} disabled={uploading} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:opacity-50">
+            Close
+          </button>
+          <button type="button" onClick={onUpload} disabled={uploading || !selections.some((item) => item.status === "pending" || item.status === "failed")} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60">
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            {failed && !uploading ? "Retry failed" : uploading ? "Uploading..." : "Upload selected files"}
+          </button>
+        </div>
       </div>
     </div>
   );

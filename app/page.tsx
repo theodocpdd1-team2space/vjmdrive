@@ -217,7 +217,7 @@ export default function LandingPage() {
         <div className="relative z-10 mx-auto flex min-h-screen max-w-7xl items-end px-5 pb-12 pt-32 md:px-8 md:pb-16 lg:pb-20">
           <div className="max-w-5xl">
             <p className="inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white backdrop-blur-md">
-              driveOne by VJMRTIM
+              driveOne 
             </p>
             <h1 className="mt-6 max-w-5xl text-5xl font-black leading-[0.95] tracking-tight text-white md:text-7xl lg:text-[5.8rem]">
               A better cloud drive for creators, vendors, and{" "}
@@ -414,7 +414,7 @@ export default function LandingPage() {
 
       <footer className="bg-[#f4f4ef] px-5 py-10 text-sm font-bold text-black/56 md:px-8">
         <div className="mx-auto flex max-w-7xl flex-col gap-5 md:flex-row md:items-center md:justify-between">
-          <p>© 2026 driveOne by VJMRTIM. A better cloud drive for creative teams.</p>
+          <p>© 2026 driveOne. A better cloud drive for creative teams.</p>
           <div className="flex flex-wrap gap-5">
             <Link href="/login" className="transition hover:text-black">
               Login
@@ -422,6 +422,12 @@ export default function LandingPage() {
             <a href="#pricing" className="transition hover:text-black">
               Pricing
             </a>
+            <Link href="/terms" className="transition hover:text-black">
+              Terms
+            </Link>
+            <Link href="/privacy" className="transition hover:text-black">
+              Privacy
+            </Link>
             <a href="https://solusivendor.com" className="transition hover:text-black">
               Built by solusivendor.com
             </a>
@@ -442,9 +448,6 @@ function Header() {
           </span>
           <span className="min-w-0 leading-none">
             <span className="block text-lg font-black tracking-tight text-white">driveOne</span>
-            <span className="mt-1 block text-[10px] font-black uppercase tracking-[0.18em] text-white/62">
-              BY VJMRTIM
-            </span>
           </span>
         </Link>
 
