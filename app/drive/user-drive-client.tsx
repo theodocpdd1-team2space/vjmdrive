@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { FormEvent } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
   CalendarClock,
@@ -51,15 +51,48 @@ type ShareResult = {
   failedEmails: string[];
 };
 
-type UploadStatus = "pending" | "uploading" | "uploaded" | "failed";
+type UploadStatus = "pending" | "queued" | "uploading" | "uploaded" | "failed";
 
 type UploadSelection = {
   id: string;
   file: File;
   name: string;
   relativePath: string;
+  size: number;
+  uploadedBytes: number;
+  totalBytes: number;
+  percent: number;
   status: UploadStatus;
-  error?: string;
+  speedBytesPerSecond: number;
+  etaSeconds: number | null;
+  errorMessage?: string;
+};
+
+type UploadProgress = {
+  loadedBytes: number;
+  totalBytes: number;
+  percent: number;
+  speedBytesPerSecond: number;
+  etaSeconds: number | null;
+};
+
+type UploadApiResponse = {
+  ok?: boolean;
+  message?: string;
+  uploaded?: string[];
+  [key: string]: unknown;
+};
+
+type UploadTotals = {
+  totalFiles: number;
+  completedFiles: number;
+  failedFiles: number;
+  activeFiles: number;
+  totalBytes: number;
+  uploadedBytes: number;
+  totalPercent: number;
+  totalSpeedBytesPerSecond: number;
+  totalEtaSeconds: number | null;
 };
 
 type FileSystemEntryLike = {
@@ -85,6 +118,22 @@ type DataTransferItemWithEntry = DataTransferItem & {
 
 function uploadId(file: File, relativePath: string) {
   return `${relativePath || file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`;
+}
+
+function createUploadSelection(file: File, relativePath: string): UploadSelection {
+  return {
+    id: uploadId(file, relativePath),
+    file,
+    name: file.name,
+    relativePath,
+    size: file.size,
+    uploadedBytes: 0,
+    totalBytes: file.size,
+    percent: 0,
+    status: "pending",
+    speedBytesPerSecond: 0,
+    etaSeconds: null,
+  };
 }
 
 function fileFromEntry(entry: FileSystemFileEntryLike) {
@@ -116,7 +165,7 @@ async function selectionsFromEntry(entry: FileSystemEntryLike, parentPath = ""):
 
   if (entry.isFile) {
     const file = await fileFromEntry(entry as FileSystemFileEntryLike);
-    return [{ id: uploadId(file, relativePath), file, name: file.name, relativePath, status: "pending" }];
+    return [createUploadSelection(file, relativePath)];
   }
 
   if (entry.isDirectory) {
@@ -131,8 +180,107 @@ async function selectionsFromEntry(entry: FileSystemEntryLike, parentPath = ""):
 async function selectionsFromFileList(files: FileList | File[], folderUpload = false) {
   return Array.from(files).map((file) => {
     const relativePath = folderUpload ? (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name : file.name;
-    return { id: uploadId(file, relativePath), file, name: file.name, relativePath, status: "pending" as const };
+    return createUploadSelection(file, relativePath);
   });
+}
+
+function uploadSingleFileWithProgress({
+  file,
+  currentFolder,
+  relativePath,
+  onProgress,
+}: {
+  file: File;
+  currentFolder: string;
+  relativePath: string;
+  onProgress: (progress: UploadProgress) => void;
+}) {
+  return new Promise<UploadApiResponse>((resolve, reject) => {
+    const form = new FormData();
+    form.set("path", currentFolder);
+    form.append("files", file);
+    form.append("relativePaths", relativePath || file.name);
+
+    const xhr = new XMLHttpRequest();
+    const startedAt = performance.now();
+
+    xhr.upload.onprogress = (event) => {
+      const elapsedSeconds = Math.max((performance.now() - startedAt) / 1000, 0.001);
+      const requestTotal = event.lengthComputable ? event.total : file.size;
+      const rawPercent = requestTotal ? (event.loaded / requestTotal) * 100 : 0;
+      const scaledBytes = requestTotal ? (event.loaded / requestTotal) * file.size : event.loaded;
+      const loadedBytes = file.size > 0 ? Math.min(file.size - 1, Math.max(0, scaledBytes)) : 0;
+      const speedBytesPerSecond = loadedBytes / elapsedSeconds;
+      const remainingBytes = Math.max(file.size - loadedBytes, 0);
+
+      onProgress({
+        loadedBytes,
+        totalBytes: file.size,
+        percent: Math.min(99, Math.max(0, rawPercent)),
+        speedBytesPerSecond,
+        etaSeconds: speedBytesPerSecond > 0 ? remainingBytes / speedBytesPerSecond : null,
+      });
+    };
+
+    xhr.onload = () => {
+      let data: UploadApiResponse = {};
+      try {
+        data = xhr.responseText ? (JSON.parse(xhr.responseText) as UploadApiResponse) : {};
+      } catch {
+        data = {};
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300 && data.ok) {
+        resolve(data);
+        return;
+      }
+
+      reject(new Error(data.message || "Upload failed."));
+    };
+
+    xhr.onerror = () => reject(new Error("Network error while uploading."));
+    xhr.onabort = () => reject(new Error("Upload canceled."));
+    xhr.open("POST", "/api/files/upload");
+    xhr.send(form);
+  });
+}
+
+function calculateUploadTotals(selections: UploadSelection[]): UploadTotals {
+  const totalBytes = selections.reduce((sum, item) => sum + item.totalBytes, 0);
+  const uploadedBytes = selections.reduce((sum, item) => sum + Math.min(item.uploadedBytes, item.totalBytes), 0);
+  const totalSpeedBytesPerSecond = selections
+    .filter((item) => item.status === "uploading")
+    .reduce((sum, item) => sum + item.speedBytesPerSecond, 0);
+  const remainingBytes = Math.max(totalBytes - uploadedBytes, 0);
+
+  return {
+    totalFiles: selections.length,
+    completedFiles: selections.filter((item) => item.status === "uploaded").length,
+    failedFiles: selections.filter((item) => item.status === "failed").length,
+    activeFiles: selections.filter((item) => item.status === "uploading").length,
+    totalBytes,
+    uploadedBytes,
+    totalPercent: totalBytes ? Math.round((uploadedBytes / totalBytes) * 100) : 0,
+    totalSpeedBytesPerSecond,
+    totalEtaSeconds: totalSpeedBytesPerSecond > 0 ? remainingBytes / totalSpeedBytesPerSecond : null,
+  };
+}
+
+function formatDuration(seconds: number | null) {
+  if (seconds === null || !Number.isFinite(seconds)) return "-";
+  const rounded = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(rounded / 3600);
+  const minutes = Math.floor((rounded % 3600) / 60);
+  const remainingSeconds = rounded % 60;
+
+  if (hours) return `${hours}h ${minutes}m`;
+  if (minutes) return `${minutes}m ${remainingSeconds}s`;
+  return `${remainingSeconds}s`;
+}
+
+function formatSpeed(bytesPerSecond: number) {
+  if (!bytesPerSecond || !Number.isFinite(bytesPerSecond)) return "-";
+  return `${formatBytes(bytesPerSecond)}/s`;
 }
 
 async function selectionsFromDrop(dataTransfer: DataTransfer) {
@@ -187,6 +335,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
   const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
+  const uploadProgressClockRef = useRef<Record<string, number>>({});
 
   const load = useCallback(async (nextPath: string) => {
     setLoading(true);
@@ -222,57 +371,114 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
   }
 
   async function uploadOne(selection: UploadSelection) {
-    const form = new FormData();
-    form.set("path", path);
-    form.append("files", selection.file);
-    form.append("relativePaths", selection.relativePath || selection.file.name);
+    return uploadSingleFileWithProgress({
+      file: selection.file,
+      currentFolder: path,
+      relativePath: selection.relativePath || selection.file.name,
+      onProgress: (progress) => {
+        const now = performance.now();
+        const lastUpdate = uploadProgressClockRef.current[selection.id] || 0;
+        if (now - lastUpdate < 250 && progress.percent < 99) return;
+        uploadProgressClockRef.current[selection.id] = now;
 
-    const res = await fetch("/api/files/upload", {
-      method: "POST",
-      body: form,
+        setUploadSelections((current) =>
+          current.map((item) =>
+            item.id === selection.id
+              ? {
+                  ...item,
+                  uploadedBytes: progress.loadedBytes,
+                  totalBytes: progress.totalBytes,
+                  percent: progress.percent,
+                  speedBytesPerSecond: progress.speedBytesPerSecond,
+                  etaSeconds: progress.etaSeconds,
+                }
+              : item
+          )
+        );
+      },
     });
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok || !data.ok) {
-      throw new Error(data.message || "Upload failed.");
-    }
   }
 
   async function uploadSelected() {
     if (uploading) return;
-    const pending = uploadSelections.filter((item) => item.status === "pending" || item.status === "failed");
-    if (!pending.length) return;
+    const selectedForUpload = uploadSelections.filter((item) => item.status === "pending" || item.status === "failed");
+    if (!selectedForUpload.length) return;
 
     setUploading(true);
     setNotice("");
+    uploadProgressClockRef.current = {};
     setUploadSelections((current) =>
-      current.map((item) => (item.status === "failed" ? { ...item, status: "pending", error: undefined } : item))
+      current.map((item) =>
+        item.status === "pending" || item.status === "failed"
+          ? {
+              ...item,
+              status: "queued",
+              uploadedBytes: 0,
+              percent: 0,
+              speedBytesPerSecond: 0,
+              etaSeconds: null,
+              errorMessage: undefined,
+            }
+          : item
+      )
     );
 
     let cursor = 0;
-    const concurrency = Math.min(3, pending.length);
+    let failedCount = 0;
+    const concurrency = Math.min(3, selectedForUpload.length);
 
     async function worker() {
       for (;;) {
         const index = cursor;
         cursor += 1;
-        const selection = pending[index];
+        const selection = selectedForUpload[index];
         if (!selection) return;
 
         setUploadSelections((current) =>
-          current.map((item) => (item.id === selection.id ? { ...item, status: "uploading", error: undefined } : item))
+          current.map((item) =>
+            item.id === selection.id
+              ? {
+                  ...item,
+                  status: "uploading",
+                  uploadedBytes: 0,
+                  percent: 0,
+                  speedBytesPerSecond: 0,
+                  etaSeconds: null,
+                  errorMessage: undefined,
+                }
+              : item
+          )
         );
 
         try {
           await uploadOne(selection);
           setUploadSelections((current) =>
-            current.map((item) => (item.id === selection.id ? { ...item, status: "uploaded", error: undefined } : item))
+            current.map((item) =>
+              item.id === selection.id
+                ? {
+                    ...item,
+                    status: "uploaded",
+                    uploadedBytes: item.totalBytes,
+                    percent: 100,
+                    speedBytesPerSecond: 0,
+                    etaSeconds: null,
+                    errorMessage: undefined,
+                  }
+                : item
+            )
           );
         } catch (caught) {
+          failedCount += 1;
           setUploadSelections((current) =>
             current.map((item) =>
               item.id === selection.id
-                ? { ...item, status: "failed", error: caught instanceof Error ? caught.message : "Upload failed." }
+                ? {
+                    ...item,
+                    status: "failed",
+                    speedBytesPerSecond: 0,
+                    etaSeconds: null,
+                    errorMessage: caught instanceof Error ? caught.message : "Upload failed.",
+                  }
                 : item
             )
           );
@@ -281,8 +487,14 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
     }
 
     await Promise.all(Array.from({ length: concurrency }, () => worker()));
-    setUploading(false);
-    await load(path);
+    try {
+      await load(path);
+      setNotice(failedCount ? `Upload finished with ${failedCount} failed.` : "Upload complete.");
+    } catch {
+      setNotice("Upload finished, but folder refresh failed.");
+    } finally {
+      setUploading(false);
+    }
   }
 
   function currentFolderItem(): DriveItem {
@@ -1159,13 +1371,51 @@ function UploadModal({
   if (!open) return null;
 
   const total = selections.length;
-  const uploaded = selections.filter((item) => item.status === "uploaded").length;
-  const failed = selections.filter((item) => item.status === "failed").length;
-  const pending = selections.filter((item) => item.status === "pending").length;
-  const current = selections.find((item) => item.status === "uploading");
+  const totals = calculateUploadTotals(selections);
+  const uploaded = totals.completedFiles;
+  const failed = totals.failedFiles;
+  const pending = selections.filter((item) => item.status === "pending" || item.status === "queued").length;
+  const activeSelections = selections.filter((item) => item.status === "uploading");
+  const currentNames = activeSelections.map((item) => item.relativePath || item.name);
+  const currentLabel = currentNames.length
+    ? `${currentNames[0]}${currentNames.length > 1 ? ` + ${currentNames.length - 1} more` : ""}`
+    : uploading
+      ? "Refreshing folder list"
+      : completeUploadLabel();
   const complete = total > 0 && uploaded + failed === total && !uploading;
-  const title = complete ? (failed ? "Upload partially complete" : "Upload complete") : uploading ? "Uploading files" : "Upload files";
-  const percent = total ? Math.round((uploaded / total) * 100) : 0;
+  const title = complete
+    ? failed
+      ? "Upload partially complete"
+      : "Upload complete"
+    : uploading
+      ? activeSelections.length
+        ? "Uploading files"
+        : "Finishing upload"
+      : "Upload files";
+  const percent = total ? (complete ? totals.totalPercent : Math.min(totals.totalPercent, 99)) : 0;
+  const uploadableCount = selections.filter((item) => item.status === "pending" || item.status === "failed").length;
+  const retryOnly = failed > 0 && selections.every((item) => item.status !== "pending" && item.status !== "queued");
+  const orderedSelections = [...selections].sort((a, b) => {
+    const order: Record<UploadStatus, number> = { uploading: 0, queued: 1, pending: 2, failed: 3, uploaded: 4 };
+    return order[a.status] - order[b.status];
+  });
+  const visibleSelections = orderedSelections.slice(0, 20);
+  const hiddenSelections = Math.max(orderedSelections.length - visibleSelections.length, 0);
+
+  function completeUploadLabel() {
+    if (!total) return "-";
+    if (uploaded) return "Done";
+    if (pending) return "Ready";
+    return "-";
+  }
+
+  function statusClass(status: UploadStatus) {
+    if (status === "uploaded") return "bg-[#d7ff3f]/10 text-[#d7ff3f]";
+    if (status === "failed") return "bg-red-300/10 text-red-100";
+    if (status === "uploading") return "bg-blue-300/10 text-blue-100";
+    if (status === "queued") return "bg-amber-300/10 text-amber-100";
+    return "bg-white/10 text-zinc-400";
+  }
 
   return (
     <div className="fixed inset-0 z-[110] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4">
@@ -1179,7 +1429,13 @@ function UploadModal({
               {failed ? ` · ${failed} failed` : ""}
             </p>
           </div>
-          <button onClick={onClose} disabled={uploading} className="rounded-xl p-2 text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-50" aria-label="Close upload modal">
+          <button
+            onClick={onClose}
+            disabled={uploading}
+            title={uploading ? "Upload still running" : "Close upload modal"}
+            className="rounded-xl p-2 text-zinc-400 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Close upload modal"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -1200,6 +1456,7 @@ function UploadModal({
           onDrop={(event) => {
             event.preventDefault();
             setDragActive(false);
+            if (uploading) return;
             onDropFiles(event.dataTransfer);
           }}
           className={`mt-5 rounded-3xl border border-dashed p-6 text-center transition ${
@@ -1249,9 +1506,7 @@ function UploadModal({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-black text-white">{uploaded} / {total} uploaded</p>
-                <p className="mt-1 text-xs text-zinc-500">
-                  Current: {current?.name || (complete ? "Done" : pending ? "Ready" : "-")} · Failed: {failed}
-                </p>
+                <p className="mt-1 text-xs text-zinc-500">{formatBytes(totals.uploadedBytes)} / {formatBytes(totals.totalBytes)}</p>
               </div>
               <span className="text-sm font-black text-[#d7ff3f]">{percent}%</span>
             </div>
@@ -1259,23 +1514,49 @@ function UploadModal({
               <div className="h-full rounded-full bg-[#d7ff3f] transition-all" style={{ width: `${percent}%` }} />
             </div>
 
+            <div className="mt-4 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2">
+                <span className="text-zinc-500">Speed: </span>
+                <span className="font-bold text-white">{formatSpeed(totals.totalSpeedBytesPerSecond)}</span>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2">
+                <span className="text-zinc-500">ETA: </span>
+                <span className="font-bold text-white">{formatDuration(totals.totalEtaSeconds)}</span>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2 sm:col-span-2">
+                <span className="text-zinc-500">Current: </span>
+                <span className="font-bold text-white">{currentLabel}</span>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2">
+                <span className="text-zinc-500">Active: </span>
+                <span className="font-bold text-white">{totals.activeFiles}</span>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2">
+                <span className="text-zinc-500">Failed: </span>
+                <span className={failed ? "font-bold text-red-100" : "font-bold text-white"}>{failed}</span>
+              </div>
+            </div>
+
             <div className="mt-4 max-h-56 space-y-2 overflow-auto pr-1">
-              {selections.map((item) => (
+              {visibleSelections.map((item) => (
                 <div key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-bold text-white">{item.relativePath || item.name}</p>
-                    {item.error ? <p className="mt-1 text-xs text-red-200">{item.error}</p> : null}
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
+                      <span>{formatBytes(item.uploadedBytes)} / {formatBytes(item.totalBytes)}</span>
+                      {item.status === "uploading" ? <span>{Math.round(item.percent)}%</span> : null}
+                      {item.status === "uploading" ? <span>{formatSpeed(item.speedBytesPerSecond)}</span> : null}
+                    </div>
+                    {item.status === "uploading" ? (
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                        <div className="h-full rounded-full bg-blue-300 transition-all" style={{ width: `${Math.min(item.percent, 99)}%` }} />
+                      </div>
+                    ) : null}
+                    {item.errorMessage ? <p className="mt-1 text-xs text-red-200">{item.errorMessage}</p> : null}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${
-                      item.status === "uploaded"
-                        ? "bg-[#d7ff3f]/10 text-[#d7ff3f]"
-                        : item.status === "failed"
-                          ? "bg-red-300/10 text-red-100"
-                          : item.status === "uploading"
-                            ? "bg-blue-300/10 text-blue-100"
-                            : "bg-white/10 text-zinc-400"
-                    }`}>
+                    {item.status === "uploaded" ? <CheckSquare className="h-4 w-4 text-[#d7ff3f]" /> : null}
+                    <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${statusClass(item.status)}`}>
                       {item.status}
                     </span>
                     {!uploading && item.status !== "uploaded" ? (
@@ -1286,6 +1567,11 @@ function UploadModal({
                   </div>
                 </div>
               ))}
+              {hiddenSelections ? (
+                <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2 text-xs text-zinc-500">
+                  {hiddenSelections} more files hidden for performance.
+                </div>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -1294,12 +1580,12 @@ function UploadModal({
           <button type="button" onClick={onClear} disabled={uploading || !total} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:opacity-50">
             Clear selected files
           </button>
-          <button type="button" onClick={onClose} disabled={uploading} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:opacity-50">
-            Close
+          <button type="button" onClick={onClose} disabled={uploading} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50">
+            {uploading ? "Upload in progress" : "Close"}
           </button>
-          <button type="button" onClick={onUpload} disabled={uploading || !selections.some((item) => item.status === "pending" || item.status === "failed")} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60">
+          <button type="button" onClick={onUpload} disabled={uploading || !uploadableCount} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60">
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {failed && !uploading ? "Retry failed" : uploading ? "Uploading..." : "Upload selected files"}
+            {retryOnly && !uploading ? "Retry failed" : uploading ? "Uploading..." : failed && !uploading ? "Upload pending and failed" : "Upload selected files"}
           </button>
         </div>
       </div>
