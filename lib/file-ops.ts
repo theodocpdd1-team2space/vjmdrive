@@ -4,7 +4,6 @@ import { getCacheRoot } from "./preview-cache";
 import {
   assertRealPathInsideRoot,
   assertSafeName,
-  getAssetRoot,
   isDriveSubPath,
   joinDrivePath,
   resolveSafePath,
@@ -39,13 +38,12 @@ export async function createFolder(parentPath: string, name: string) {
 export async function renameItem(relativePath: string, newName: string) {
   const source = await resolveExisting(relativePath);
   const destination = path.join(/*turbopackIgnore: true*/ path.dirname(source.absolutePath), assertSafeName(newName));
-  const root = getAssetRoot();
 
   if ((await fs.stat(destination).catch(() => null)) !== null) {
     throw new Error("Target already exists");
   }
 
-  await assertRealPathInsideRoot(root, path.dirname(destination));
+  await assertRealPathInsideRoot(source.root, path.dirname(destination));
   await fs.rename(source.absolutePath, destination);
   return path.posix.join(path.posix.dirname(source.relativePath), assertSafeName(newName));
 }

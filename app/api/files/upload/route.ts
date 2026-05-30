@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { findUserById, getCurrentUser } from "@/lib/auth";
+import { findUserById, getCurrentUser, userStorageRelativePath } from "@/lib/auth";
 import { uploadUserFiles } from "@/lib/user-files";
 import { enqueuePreview, filterPreviewQueueSupportedPaths } from "@/lib/preview-queue";
 
@@ -20,7 +20,8 @@ export async function POST(req: NextRequest) {
       .getAll("relativePaths")
       .map((item) => (typeof item === "string" ? item : ""));
     const uploaded = await uploadUserFiles(user, targetPath, files, relativePaths);
-    const queuePaths = filterPreviewQueueSupportedPaths(uploaded.map((item) => `__users/${user.id}/${item}`));
+    const userRoot = userStorageRelativePath(user);
+    const queuePaths = filterPreviewQueueSupportedPaths(uploaded.map((item) => `${userRoot}/${item}`));
     if (queuePaths.length) await enqueuePreview(queuePaths);
     return NextResponse.json({ ok: true, uploaded });
   } catch (caught) {

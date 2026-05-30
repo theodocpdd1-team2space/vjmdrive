@@ -16,6 +16,12 @@ export type SafePath = {
   root: string;
 };
 
+export const VISUAL1TB_VIRTUAL_ROOT = "__storage/visual1tb";
+
+export function getVisual1tbUserStorageRoot() {
+  return process.env.VISUAL1TB_USER_ROOT || "/mnt/visual1tb/driveone-users";
+}
+
 export function getAssetRoot() {
   const configuredRoot = process.env.ASSET_ROOT;
 
@@ -65,8 +71,20 @@ export function isInsideRoot(root: string, target: string) {
 }
 
 export function resolveSafePath(input: string | null | undefined): SafePath {
-  const root = getAssetRoot();
   const relativePath = normalizeDrivePath(input);
+  if (relativePath === VISUAL1TB_VIRTUAL_ROOT || relativePath.startsWith(`${VISUAL1TB_VIRTUAL_ROOT}/`)) {
+    const storageRoot = path.resolve(getVisual1tbUserStorageRoot());
+    const storageRelative = relativePath.slice(VISUAL1TB_VIRTUAL_ROOT.length).replace(/^\/+/, "");
+    const absolutePath = path.resolve(storageRoot, storageRelative);
+
+    if (!isInsideRoot(storageRoot, absolutePath)) {
+      throw new Error("Invalid path");
+    }
+
+    return { absolutePath, relativePath, root: storageRoot };
+  }
+
+  const root = getAssetRoot();
   const absolutePath = path.resolve(root, relativePath);
 
   if (!isInsideRoot(root, absolutePath)) {

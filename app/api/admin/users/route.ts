@@ -1,5 +1,18 @@
 import { NextResponse } from "next/server";
-import { DEFAULT_USER_QUOTA_BYTES, createUser, isAdmin, normalizeEmail, readUsers, updateUser, userStoragePath, type UserPlan, type UserRole } from "@/lib/auth";
+import {
+  DEFAULT_USER_QUOTA_BYTES,
+  createUser,
+  isAdmin,
+  normalizeEmail,
+  normalizeUserStorageKey,
+  readUsers,
+  updateUser,
+  userStorageLabel,
+  userStoragePath,
+  type UserPlan,
+  type UserRole,
+  type UserStorageKey,
+} from "@/lib/auth";
 import { directorySize, storageSummary } from "@/lib/storage";
 
 export const runtime = "nodejs";
@@ -23,11 +36,16 @@ function quotaFromUser(user: RawUser) {
   return quota >= 0 ? quota : DEFAULT_USER_QUOTA_BYTES;
 }
 
+function storageKeyFromUser(user: RawUser): UserStorageKey {
+  return normalizeUserStorageKey(user.storageKey);
+}
+
 async function adminUserResponse(user: RawUser, index = 0) {
   const id = safeText(user.id, safeText(user.email, `user-${index + 1}`));
   const role: UserRole = user.role === "ADMIN" ? "ADMIN" : "USER";
   const quotaBytes = quotaFromUser(user);
-  const storageRoot = safeText(user.id) ? userStoragePath(safeText(user.id)) : "";
+  const storageKey = storageKeyFromUser(user);
+  const storageRoot = safeText(user.id) ? userStoragePath({ id: safeText(user.id), storageKey }) : "";
   const usedBytes = storageRoot ? await directorySize(storageRoot).catch(() => 0) : 0;
 
   return {
@@ -41,6 +59,8 @@ async function adminUserResponse(user: RawUser, index = 0) {
     storageUsedBytes: usedBytes,
     storageLimitBytes: quotaBytes,
     storage: storageSummary(usedBytes, quotaBytes),
+    storageKey,
+    storageLabel: userStorageLabel(storageKey),
     emailVerified: Boolean(user.emailVerified),
     disabled: Boolean(user.disabled),
     lastLoginAt: typeof user.lastLoginAt === "string" ? user.lastLoginAt : null,
@@ -87,6 +107,11 @@ export async function POST(req: Request) {
   const allowedPlans: UserPlan[] = ["Free", "Personal", "Pro", "Vendor", "Business", "Custom"];
   const plan = allowedPlans.includes(body?.plan) ? (body.plan as UserPlan) : "Free";
   const quotaBytes = body?.quotaBytes === null ? null : body?.quotaBytes === undefined ? undefined : Number(body.quotaBytes);
+  const rawStorageKey = body?.storageKey === undefined ? "default" : body.storageKey;
+  if (rawStorageKey !== "default" && rawStorageKey !== "visual1tb") {
+    return NextResponse.json({ ok: false, message: "Invalid storage location." }, { status: 400 });
+  }
+  const storageKey = rawStorageKey as UserStorageKey;
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ ok: false, message: "Valid email is required." }, { status: 400 });
@@ -106,8 +131,9 @@ export async function POST(req: Request) {
       role,
       quotaBytes: quotaBytes === undefined ? undefined : quotaBytes,
       emailVerified: true,
+      storageKey,
     });
-    const updated = await updateUser(user.id, { plan, quotaBytes: quotaBytes === undefined ? user.quotaBytes : quotaBytes });
+    const updated = await updateUser(user.id, { plan, quotaBytes: quotaBytes === undefined ? user.quotaBytes : quotaBytes, storageKey });
     return NextResponse.json({ ok: true, user: await adminUserResponse((updated || user) as unknown as RawUser) });
   } catch (caught) {
     return NextResponse.json(

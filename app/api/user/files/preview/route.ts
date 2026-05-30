@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUser, userStorageRelativePath } from "@/lib/auth";
+import { findUserById, getCurrentUser, userStorageRelativePath } from "@/lib/auth";
 import { createPreviewResponseForPath } from "@/lib/user-file-response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ ok: false }, { status: 401 });
+  const session = await getCurrentUser();
+  if (!session) return NextResponse.json({ ok: false }, { status: 401 });
+  const user = await findUserById(session.id);
+  if (!user || user.disabled) return NextResponse.json({ ok: false }, { status: 403 });
 
   const response = await createPreviewResponseForPath(
-    userStorageRelativePath(user.id),
+    userStorageRelativePath(user),
     req.nextUrl.searchParams.get("path") || "",
     req.headers.get("range")
   );

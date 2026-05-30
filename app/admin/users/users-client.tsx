@@ -37,6 +37,8 @@ type AdminUser = {
     quota: string;
     percent: number;
   };
+  storageKey: "default" | "visual1tb";
+  storageLabel: string;
   emailVerified: boolean;
   disabled: boolean;
   createdAt: string;
@@ -145,6 +147,7 @@ function normalizeUser(value: unknown, index: number): AdminUser {
   const name = safeText(pick(raw, ["name", "displayName", "username"]), email);
   const plan = normalizePlan(pick(raw, ["plan", "planName", "subscriptionPlan"]), role);
   const storage = isRecord(raw.storage) ? raw.storage : {};
+  const storageKey = raw.storageKey === "visual1tb" ? "visual1tb" : "default";
   const quotaValue = pick(raw, ["quotaBytes", "storageLimitBytes", "storageLimit", "quota"]);
   const usedValue = pick(raw, ["usedBytes", "storageUsedBytes", "usageBytes"]);
   const storageUsedBytes = bytesFrom(pick(storage, ["usedBytes", "bytes", "usedValue"]) ?? usedValue, bytesFrom(storage.used, 0));
@@ -170,6 +173,8 @@ function normalizeUser(value: unknown, index: number): AdminUser {
       quota: safeText(storage.quota, formatQuota(storageLimitBytes)),
       percent: storagePercent,
     },
+    storageKey,
+    storageLabel: safeText(raw.storageLabel, storageKey === "visual1tb" ? "Visual 1TB" : "Default storage"),
     emailVerified: safeBoolean(raw.emailVerified, false),
     disabled,
     createdAt: safeText(pick(raw, ["createdAt", "created_at"]), "-"),
@@ -256,7 +261,7 @@ export function AdminUsersClient() {
     }
   }
 
-  async function createAdminUser(input: { email: string; password: string; role: "ADMIN" | "USER"; plan: string; quotaBytes: number | null }) {
+  async function createAdminUser(input: { email: string; password: string; role: "ADMIN" | "USER"; plan: string; quotaBytes: number | null; storageKey: "default" | "visual1tb" }) {
     setNotice("");
     const res = await fetch("/api/admin/users", {
       method: "POST",
@@ -317,7 +322,8 @@ export function AdminUsersClient() {
         user.name.toLowerCase().includes(keyword) ||
         user.email.toLowerCase().includes(keyword) ||
         user.role.toLowerCase().includes(keyword) ||
-        user.plan.toLowerCase().includes(keyword);
+        user.plan.toLowerCase().includes(keyword) ||
+        user.storageLabel.toLowerCase().includes(keyword);
 
       if (!matchesSearch) return false;
       if (roleFilter !== "ALL" && user.role !== roleFilter) return false;
@@ -517,6 +523,7 @@ export function AdminUsersClient() {
                         <Info icon={Shield} label="Role" value={user.role} />
                         <Info icon={Database} label="Plan" value={user.plan || "Free"} />
                         <Info icon={HardDrive} label="Storage" value={`${user.storage.used} / ${user.storage.quota}`} />
+                        <Info icon={HardDrive} label="Storage location" value={user.storageLabel} />
                         <Info icon={BadgeCheck} label="Verified" value={user.emailVerified ? "Yes" : "No"} />
                         <Info icon={Ban} label="Status" value={user.disabled ? "Disabled" : "Active"} />
                         <Info icon={Clock} label="Created" value={formatDate(user.createdAt)} />
@@ -568,6 +575,18 @@ export function AdminUsersClient() {
                               <option key={plan}>{plan}</option>
                             ))}
                           </select>
+                        </label>
+
+                        <label className="text-sm font-bold text-zinc-300">
+                          Storage location
+                          <input
+                            value={user.storageLabel}
+                            readOnly
+                            className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm text-zinc-400 outline-none"
+                          />
+                          <span className="mt-2 block text-xs font-medium leading-5 text-zinc-500">
+                            Changing storage location does not move existing files. Create new premium users on Visual 1TB from the Add User modal.
+                          </span>
                         </label>
 
                         <label className="text-sm font-bold text-zinc-300">
@@ -667,13 +686,14 @@ function AddUserModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onCreate: (input: { email: string; password: string; role: "ADMIN" | "USER"; plan: string; quotaBytes: number | null }) => Promise<void>;
+  onCreate: (input: { email: string; password: string; role: "ADMIN" | "USER"; plan: string; quotaBytes: number | null; storageKey: "default" | "visual1tb" }) => Promise<void>;
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"ADMIN" | "USER">("USER");
   const [plan, setPlan] = useState("Free");
   const [quota, setQuota] = useState<string>(String(1024 ** 3));
+  const [storageKey, setStorageKey] = useState<"default" | "visual1tb">("default");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -690,12 +710,14 @@ function AddUserModal({
         role,
         plan,
         quotaBytes: quota === "unlimited" ? null : Number(quota),
+        storageKey,
       });
       setEmail("");
       setPassword("");
       setRole("USER");
       setPlan("Free");
       setQuota(String(1024 ** 3));
+      setStorageKey("default");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Create user failed.");
     } finally {
@@ -749,6 +771,16 @@ function AddUserModal({
               </select>
             </label>
           </div>
+          <label className="text-sm font-bold text-zinc-300">
+            Storage Location
+            <select value={storageKey} onChange={(event) => setStorageKey(event.target.value as "default" | "visual1tb")} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm text-white outline-none">
+              <option value="default">Default storage</option>
+              <option value="visual1tb">Visual 1TB premium storage</option>
+            </select>
+            <span className="mt-2 block text-xs font-medium leading-5 text-zinc-500">
+              Visual 1TB stores this new user's files on premium SSD storage. Existing users are not moved.
+            </span>
+          </label>
 
           {error ? <p className="rounded-2xl border border-red-300/20 bg-red-300/10 px-3 py-2 text-sm text-red-100">{error}</p> : null}
 

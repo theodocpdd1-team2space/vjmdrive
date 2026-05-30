@@ -39,7 +39,7 @@ export async function POST(req: Request) {
   const allowedEmails = normalizeEmails(body?.allowedEmails);
 
   try {
-    const fullRootPath = resolveUserDrivePath(user.id, rootPath);
+    const fullRootPath = resolveUserDrivePath(user, rootPath);
     await resolveExisting(fullRootPath);
 
     const { link, reused, newEmails } = await createOrReuseShareLink({

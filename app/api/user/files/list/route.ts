@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { findUserById, getCurrentUser, userStoragePath, userStorageRelativePath } from "@/lib/auth";
+import { findUserById, getCurrentUser, userStorageLabel, userStoragePath, userStorageRelativePath } from "@/lib/auth";
 import { listDriveFolder } from "@/lib/drive-list";
 import { planQuotaLabel } from "@/lib/plan-display";
 import { directorySize, storageSummary } from "@/lib/storage";
@@ -14,11 +14,11 @@ export async function GET(req: NextRequest) {
   if (!user || user.disabled) return NextResponse.json({ ok: false, message: "Account unavailable." }, { status: 403 });
   const data = await listDriveFolder({
     path: req.nextUrl.searchParams.get("path") || "",
-    scopeRootPath: userStorageRelativePath(user.id),
+    scopeRootPath: userStorageRelativePath(user),
     urlPrefix: "/api/user/files",
     canDownload: true,
   });
-  const usedBytes = await directorySize(userStoragePath(user.id)).catch(() => 0);
+  const usedBytes = await directorySize(userStoragePath(user)).catch(() => 0);
   const storage = storageSummary(usedBytes, user.quotaBytes);
   return NextResponse.json({
     ok: true,
@@ -29,5 +29,7 @@ export async function GET(req: NextRequest) {
     storageUsedBytes: usedBytes,
     storagePercent: storage.percent,
     planLabel: planQuotaLabel(user.plan, user.quotaBytes),
+    storageKey: user.storageKey || "default",
+    storageLabel: userStorageLabel(user.storageKey),
   });
 }

@@ -1,6 +1,6 @@
 import fs from "fs/promises";
 import { NextRequest, NextResponse } from "next/server";
-import { findUserById, getCurrentUser } from "@/lib/auth";
+import { findUserById, getCurrentUser, userStorageRelativePath } from "@/lib/auth";
 import {
   assertChunkUploadOwner,
   assertUploadId,
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
       chunkPaths,
     });
 
-    const queuePaths = filterPreviewQueueSupportedPaths([`__users/${user.id}/${uploaded}`]);
+    const queuePaths = filterPreviewQueueSupportedPaths([`${userStorageRelativePath(user)}/${uploaded}`]);
     if (queuePaths.length) await enqueuePreview(queuePaths);
     await removeChunkUploadSession(uploadId);
 

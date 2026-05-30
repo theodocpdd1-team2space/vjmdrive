@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { getCacheRoot } from "./preview-cache";
-import { getAssetRoot } from "./safe-path";
+import { getAssetRoot, getVisual1tbUserStorageRoot, VISUAL1TB_VIRTUAL_ROOT } from "./safe-path";
 
 export const AUTH_COOKIE = "vjm_drive_auth";
 export const ADMIN_COOKIE = "vjm_drive_admin";
@@ -13,6 +13,7 @@ export const DEFAULT_USER_QUOTA_BYTES = 1024 * 1024 * 1024;
 
 export type UserRole = "ADMIN" | "USER";
 export type UserPlan = "Free" | "Personal" | "Pro" | "Vendor" | "Business" | "Custom";
+export type UserStorageKey = "default" | "visual1tb";
 
 export type DriveUser = {
   id: string;
@@ -23,6 +24,7 @@ export type DriveUser = {
   role: UserRole;
   quotaBytes: number | null;
   plan?: UserPlan;
+  storageKey?: UserStorageKey;
   emailVerified: boolean;
   disabled?: boolean;
   lastLoginAt?: string | null;
@@ -88,6 +90,14 @@ export async function findUserById(id: string) {
   return users.find((user) => user.id === id) || null;
 }
 
+export function normalizeUserStorageKey(value: unknown): UserStorageKey {
+  return value === "visual1tb" ? "visual1tb" : "default";
+}
+
+export function userStorageLabel(value: unknown) {
+  return normalizeUserStorageKey(value) === "visual1tb" ? "Visual 1TB" : "Default storage";
+}
+
 export async function createUser(input: {
   name: string;
   email: string;
@@ -96,6 +106,7 @@ export async function createUser(input: {
   quotaBytes?: number | null;
   emailVerified?: boolean;
   username?: string;
+  storageKey?: UserStorageKey;
 }) {
   const users = await readUsers();
   const email = normalizeEmail(input.email);
@@ -113,6 +124,7 @@ export async function createUser(input: {
     role: input.role || "USER",
     quotaBytes: input.quotaBytes === undefined ? DEFAULT_USER_QUOTA_BYTES : input.quotaBytes,
     plan: "Free",
+    storageKey: normalizeUserStorageKey(input.storageKey),
     emailVerified: Boolean(input.emailVerified),
     disabled: false,
     lastLoginAt: null,
@@ -120,9 +132,9 @@ export async function createUser(input: {
     updatedAt: now,
   };
 
+  await ensureUserStorage(user);
   users.push(user);
   await writeUsers(users);
-  await ensureUserStorage(user.id);
   return user;
 }
 
@@ -141,16 +153,25 @@ export async function updateUser(userId: string, patch: Partial<Omit<DriveUser, 
   return users[index];
 }
 
-export function userStorageRelativePath(userId: string) {
-  return path.posix.join("__users", userId);
+export function userStorageRelativePath(user: string | Pick<DriveUser, "id" | "storageKey">) {
+  if (typeof user === "string") return path.posix.join("__users", user);
+  if (normalizeUserStorageKey(user.storageKey) === "visual1tb") return path.posix.join(VISUAL1TB_VIRTUAL_ROOT, user.id);
+  return path.posix.join("__users", user.id);
 }
 
-export function userStoragePath(userId: string) {
-  return path.join(getAssetRoot(), "__users", userId);
+export function userStoragePath(user: string | Pick<DriveUser, "id" | "storageKey">) {
+  if (typeof user === "string") return path.join(getAssetRoot(), "__users", user);
+  if (normalizeUserStorageKey(user.storageKey) === "visual1tb") return path.join(getVisual1tbUserStorageRoot(), user.id);
+  return path.join(getAssetRoot(), "__users", user.id);
 }
 
-export async function ensureUserStorage(userId: string) {
-  await fs.mkdir(userStoragePath(userId), { recursive: true });
+export async function ensureUserStorage(user: string | Pick<DriveUser, "id" | "storageKey">) {
+  if (typeof user !== "string" && normalizeUserStorageKey(user.storageKey) === "visual1tb") {
+    const visualMount = path.dirname(getVisual1tbUserStorageRoot());
+    const mountStat = await fs.stat(visualMount).catch(() => null);
+    if (!mountStat?.isDirectory()) throw new Error("Visual 1TB storage mount is unavailable.");
+  }
+  await fs.mkdir(userStoragePath(user), { recursive: true });
 }
 
 export async function ensureAdminUser() {

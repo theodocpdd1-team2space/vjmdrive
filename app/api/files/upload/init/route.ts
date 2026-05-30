@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
       chunkSize: body.chunkSize,
     });
 
-    resolveUserDrivePath(user.id, currentPath);
+    resolveUserDrivePath(user, currentPath);
     const uploadId = createUploadId();
     await writeChunkUploadSession({
       uploadId,

@@ -10,8 +10,8 @@ import { assertRealPathInsideRoot, assertSafeName, isDriveSubPath, normalizeDriv
 import { ensureUserStorage, userStorageRelativePath, userStoragePath, type DriveUser } from "./auth";
 import { directorySize } from "./storage";
 
-export function resolveUserDrivePath(userId: string, input: string) {
-  const root = userStorageRelativePath(userId);
+export function resolveUserDrivePath(user: DriveUser | string, input: string) {
+  const root = userStorageRelativePath(user);
   const relative = normalizeDrivePath(input);
   const full = relative ? path.posix.join(root, relative) : root;
   if (!isDriveSubPath(root, full)) throw new Error("Invalid path");
@@ -20,15 +20,15 @@ export function resolveUserDrivePath(userId: string, input: string) {
 
 export async function assertUserQuota(user: DriveUser, incomingBytes = 0) {
   if (user.quotaBytes === null) return;
-  const used = await directorySize(userStoragePath(user.id));
+  const used = await directorySize(userStoragePath(user));
   if (used + incomingBytes > user.quotaBytes) throw new Error("Storage quota exceeded");
 }
 
 async function prepareUserUploadDestination(user: DriveUser, targetPath: string, fileName: string, relativePath = "") {
-  await ensureUserStorage(user.id);
+  await ensureUserStorage(user);
 
-  const root = userStorageRelativePath(user.id);
-  const fullTargetPath = resolveUserDrivePath(user.id, targetPath);
+  const root = userStorageRelativePath(user);
+  const fullTargetPath = resolveUserDrivePath(user, targetPath);
   const target = resolveSafePath(fullTargetPath);
   await assertRealPathInsideRoot(target.root, target.absolutePath);
   const targetStat = await fs.stat(target.absolutePath);
@@ -54,9 +54,9 @@ async function prepareUserUploadDestination(user: DriveUser, targetPath: string,
 }
 
 export async function createUserFolder(user: DriveUser, parentPath: string, name: string) {
-  await ensureUserStorage(user.id);
-  const root = userStorageRelativePath(user.id);
-  const fullParentPath = resolveUserDrivePath(user.id, parentPath);
+  await ensureUserStorage(user);
+  const root = userStorageRelativePath(user);
+  const fullParentPath = resolveUserDrivePath(user, parentPath);
   const parent = resolveSafePath(fullParentPath);
   await assertRealPathInsideRoot(parent.root, parent.absolutePath);
 
@@ -73,7 +73,7 @@ export async function createUserFolder(user: DriveUser, parentPath: string, name
 }
 
 export async function uploadUserFiles(user: DriveUser, targetPath: string, files: File[], relativePaths: string[] = []) {
-  await ensureUserStorage(user.id);
+  await ensureUserStorage(user);
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   await assertUserQuota(user, totalBytes);
 
@@ -107,7 +107,7 @@ export async function uploadUserFileFromChunks({
   fileSize: number;
   chunkPaths: PathLike[];
 }) {
-  await ensureUserStorage(user.id);
+  await ensureUserStorage(user);
   await assertUserQuota(user, fileSize);
 
   const { destination, uploadedRelativePath } = await prepareUserUploadDestination(user, targetPath, fileName, relativePath);
@@ -131,7 +131,7 @@ export async function uploadUserFileFromChunks({
 }
 
 export async function moveUserItems(user: DriveUser, items: string[], targetFolder: string) {
-  const root = userStorageRelativePath(user.id);
+  const root = userStorageRelativePath(user);
   const fullItems = items.map((item) => {
     const fullPath = path.posix.join(root, normalizeDrivePath(item));
     if (!isDriveSubPath(root, fullPath)) throw new Error("Invalid path");
@@ -144,7 +144,7 @@ export async function moveUserItems(user: DriveUser, items: string[], targetFold
 }
 
 export async function deleteUserItem(user: DriveUser, itemPath: string, type: "file" | "folder") {
-  const root = userStorageRelativePath(user.id);
+  const root = userStorageRelativePath(user);
   const relative = normalizeDrivePath(itemPath);
 
   if (!relative) throw new Error("Cannot delete drive root");
@@ -168,7 +168,7 @@ export async function deleteUserItems(user: DriveUser, itemPaths: string[]) {
 
   for (const itemPath of Array.from(new Set(itemPaths))) {
     try {
-      const root = userStorageRelativePath(user.id);
+      const root = userStorageRelativePath(user);
       const relative = normalizeDrivePath(itemPath);
 
       if (!relative) throw new Error("Cannot delete drive root");

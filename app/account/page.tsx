@@ -16,7 +16,7 @@ export default async function AccountPage() {
   const user = await findUserById(session.id);
   if (!user) redirect("/login");
 
-  const usedBytes = await directorySize(userStoragePath(user.id));
+  const usedBytes = await directorySize(userStoragePath(user));
   const storage = storageSummary(usedBytes, user.quotaBytes);
   const planLabel = planQuotaLabel(user.plan, user.quotaBytes);
 

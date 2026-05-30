@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     }
 
     const moved = await moveUserItems(user, items, targetFolder);
-    const userRoot = userStorageRelativePath(user.id);
+    const userRoot = userStorageRelativePath(user);
     const movePlan = items.map((oldPath, index) => ({
       oldPath: path.posix.join(userRoot, oldPath),
       newPath: path.posix.join(userRoot, moved[index] || oldPath),

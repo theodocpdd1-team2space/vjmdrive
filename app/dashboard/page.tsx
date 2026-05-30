@@ -31,10 +31,10 @@ export default async function DashboardPage() {
   if (!user) redirect("/login");
 
   const [usedBytes, myFiles, shares, beautyShares] = await Promise.all([
-    directorySize(userStoragePath(user.id)),
+    directorySize(userStoragePath(user)),
     listDriveFolder({
       path: "",
-      scopeRootPath: userStorageRelativePath(user.id),
+      scopeRootPath: userStorageRelativePath(user),
       urlPrefix: "/api/user/files",
       canDownload: true,
     }).catch(() => ({ items: [] })),

@@ -29,7 +29,7 @@ export async function DELETE(req: Request) {
   if (paths.length) {
     try {
       const result = await deleteUserItems(user, paths);
-      const absoluteScopedDeleted = result.deleted.map((item) => `${userStorageRelativePath(user.id)}/${item}`);
+      const absoluteScopedDeleted = result.deleted.map((item) => `${userStorageRelativePath(user)}/${item}`);
       const metadata = absoluteScopedDeleted.length
         ? await cleanupDeletedPathMetadata(absoluteScopedDeleted, { ownerUserId: user.id })
         : { removed: 0 };
@@ -60,7 +60,7 @@ export async function DELETE(req: Request) {
 
   try {
     const deleted = await deleteUserItem(user, itemPath, type);
-    const absoluteScopedDeleted = deleted.map((item) => `${userStorageRelativePath(user.id)}/${item}`);
+    const absoluteScopedDeleted = deleted.map((item) => `${userStorageRelativePath(user)}/${item}`);
     const metadata = await cleanupDeletedPathMetadata(absoluteScopedDeleted, { ownerUserId: user.id });
     const disabledBeautyShares = await disableBeautySharesForDeletedPaths(absoluteScopedDeleted, user.id);
 

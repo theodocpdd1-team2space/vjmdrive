@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { findUserById, getCurrentUser, userStoragePath } from "@/lib/auth";
+import { findUserById, getCurrentUser, userStorageLabel, userStoragePath } from "@/lib/auth";
 import { planQuotaLabel } from "@/lib/plan-display";
 import { directorySize, storageSummary } from "@/lib/storage";
 
@@ -13,7 +13,7 @@ export async function GET() {
   const user = await findUserById(session.id);
   if (!user || user.disabled) return NextResponse.json({ ok: true, user: null });
 
-  const usedBytes = user.role === "USER" ? await directorySize(userStoragePath(user.id)).catch(() => 0) : 0;
+  const usedBytes = user.role === "USER" ? await directorySize(userStoragePath(user)).catch(() => 0) : 0;
   const storage = storageSummary(usedBytes, user.quotaBytes);
 
   return NextResponse.json({
@@ -30,6 +30,8 @@ export async function GET() {
       storageUsedBytes: usedBytes,
       storagePercent: storage.percent,
       planLabel: planQuotaLabel(user.plan, user.quotaBytes),
+      storageKey: user.storageKey || "default",
+      storageLabel: userStorageLabel(user.storageKey),
     },
   });
 }

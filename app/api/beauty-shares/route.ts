@@ -55,7 +55,7 @@ export async function POST(req: Request) {
     const slug = validateBeautySlug(
       typeof body?.slug === "string" && body.slug.trim() ? body.slug : suggestBeautySlug(title)
     );
-    const fullRootPath = resolveUserDrivePath(user.id, rootPath);
+    const fullRootPath = resolveUserDrivePath(user, rootPath);
     const resolved = await resolveExisting(fullRootPath);
     const stat = await fs.stat(resolved.absolutePath);
     if (!stat.isDirectory()) throw new Error("Beauty Share is available for folders.");
