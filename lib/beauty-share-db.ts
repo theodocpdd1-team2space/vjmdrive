@@ -19,6 +19,7 @@ export type BeautyShareCustomText = {
   secondaryButton?: string;
   secondaryButtonText?: string;
   downloadButton?: string;
+  downloadButtonText?: string;
   albumModeLabel?: string;
   albumTitle?: string;
   coverLabel?: string;
@@ -69,6 +70,7 @@ const CUSTOM_TEXT_LIMITS: Record<keyof BeautyShareCustomText, number> = {
   secondaryButton: 80,
   secondaryButtonText: 80,
   downloadButton: 80,
+  downloadButtonText: 80,
   albumModeLabel: 120,
   albumTitle: 160,
   coverLabel: 120,

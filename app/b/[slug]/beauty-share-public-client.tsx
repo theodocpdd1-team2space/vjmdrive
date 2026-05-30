@@ -59,6 +59,7 @@ type BeautyShareCustomText = {
   secondaryButton?: string;
   secondaryButtonText?: string;
   downloadButton?: string;
+  downloadButtonText?: string;
   albumModeLabel?: string;
   albumTitle?: string;
   coverLabel?: string;
@@ -104,7 +105,8 @@ function buildBeautyShareText(share: PublicBeautyShare, title: string): BeautySh
     primaryButtonText: customText(custom, ["primaryButtonText", "primaryButton"], "View gallery"),
     secondaryButton: customText(custom, ["secondaryButton", "secondaryButtonText"], "View files"),
     secondaryButtonText: customText(custom, ["secondaryButtonText", "secondaryButton"], "Download all"),
-    downloadButton: textOrDefault(custom.downloadButton, "Download all"),
+    downloadButton: customText(custom, ["downloadButton", "downloadButtonText"], "Download all"),
+    downloadButtonText: customText(custom, ["downloadButtonText", "downloadButton"], "Download all"),
     albumModeLabel: textOrDefault(custom.albumModeLabel, "Magazine Mode"),
     albumTitle: textOrDefault(custom.albumTitle, "Digital wedding book"),
     coverLabel: textOrDefault(custom.coverLabel, "Digital Wedding Book"),
