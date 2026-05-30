@@ -46,9 +46,12 @@ export async function POST(req: Request) {
   const subtitle = typeof body?.subtitle === "string" ? body.subtitle.trim() : "";
 
   try {
-    const theme: BeautyShareTheme = body?.theme === "dark" ? "dark" : "light";
+    const theme: BeautyShareTheme =
+      body?.theme === "dark" || body?.theme === "cream" ? body.theme : "light";
     const layout: BeautyShareLayout =
-      body?.layout === "grid" || body?.layout === "magazine" ? body.layout : "collage";
+      body?.layout === "collage" || body?.layout === "grid" || body?.layout === "magazine" || body?.layout === "clean"
+        ? body.layout
+        : "clean";
     const slug = validateBeautySlug(
       typeof body?.slug === "string" && body.slug.trim() ? body.slug : suggestBeautySlug(title)
     );

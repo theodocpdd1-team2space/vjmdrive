@@ -17,8 +17,8 @@ import {
   X,
 } from "lucide-react";
 
-type BeautyTheme = "light" | "dark";
-type BeautyLayout = "collage" | "grid" | "magazine";
+type BeautyTheme = "light" | "dark" | "cream";
+type BeautyLayout = "clean" | "collage" | "grid" | "magazine";
 
 type PublicDriveItem = {
   name: string;
@@ -50,10 +50,14 @@ type PublicBeautyShare = {
 type BeautyShareCustomText = {
   heroEyebrow?: string;
   heroTitle?: string;
+  heroHeadline?: string;
   heroSubtitle?: string;
+  heroDescription?: string;
   heroMeta?: string;
   primaryButton?: string;
+  primaryButtonText?: string;
   secondaryButton?: string;
+  secondaryButtonText?: string;
   downloadButton?: string;
   albumModeLabel?: string;
   albumTitle?: string;
@@ -64,10 +68,12 @@ type BeautyShareCustomText = {
   introDescription?: string;
   galleryEyebrow?: string;
   galleryTitle?: string;
+  gallerySubtitle?: string;
   galleryDescription?: string;
   downloadTitle?: string;
   downloadDescription?: string;
   footerText?: string;
+  footerNote?: string;
 };
 
 type BeautyShareText = Required<BeautyShareCustomText>;
@@ -76,16 +82,28 @@ function textOrDefault(value: string | undefined, fallback: string) {
   return value?.trim() || fallback;
 }
 
-  function buildBeautyShareText(share: PublicBeautyShare, title: string): BeautyShareText {
+function customText(custom: BeautyShareCustomText, keys: Array<keyof BeautyShareCustomText>, fallback: string) {
+  for (const key of keys) {
+    const value = custom[key];
+    if (value?.trim()) return value.trim();
+  }
+  return fallback;
+}
+
+function buildBeautyShareText(share: PublicBeautyShare, title: string): BeautyShareText {
   const custom = share.customText || {};
 
   return {
-    heroEyebrow: textOrDefault(custom.heroEyebrow, "Private Digital Album"),
-    heroTitle: textOrDefault(custom.heroTitle, title),
-    heroSubtitle: textOrDefault(custom.heroSubtitle, share.subtitle || "Your files are ready."),
-    heroMeta: textOrDefault(custom.heroMeta, "Your files are ready"),
-    primaryButton: textOrDefault(custom.primaryButton, "Open Album"),
-    secondaryButton: textOrDefault(custom.secondaryButton, "View Files"),
+    heroEyebrow: textOrDefault(custom.heroEyebrow, "Private Client Delivery"),
+    heroTitle: customText(custom, ["heroTitle", "heroHeadline"], title),
+    heroHeadline: customText(custom, ["heroHeadline", "heroTitle"], "Your files are ready."),
+    heroSubtitle: customText(custom, ["heroSubtitle", "heroDescription"], share.subtitle || "A private delivery page prepared for you."),
+    heroDescription: customText(custom, ["heroDescription", "heroSubtitle"], share.subtitle || "A private delivery page prepared for you."),
+    heroMeta: textOrDefault(custom.heroMeta, "Better than a Google Drive link."),
+    primaryButton: customText(custom, ["primaryButton", "primaryButtonText"], "View gallery"),
+    primaryButtonText: customText(custom, ["primaryButtonText", "primaryButton"], "View gallery"),
+    secondaryButton: customText(custom, ["secondaryButton", "secondaryButtonText"], "View files"),
+    secondaryButtonText: customText(custom, ["secondaryButtonText", "secondaryButton"], "Download all"),
     downloadButton: textOrDefault(custom.downloadButton, "Download all"),
     albumModeLabel: textOrDefault(custom.albumModeLabel, "Magazine Mode"),
     albumTitle: textOrDefault(custom.albumTitle, "Digital wedding book"),
@@ -95,11 +113,13 @@ function textOrDefault(value: string | undefined, fallback: string) {
     introTitle: textOrDefault(custom.introTitle, "Your files are ready."),
     introDescription: textOrDefault(custom.introDescription, "Preview, browse, and download your files in one place."),
     galleryEyebrow: textOrDefault(custom.galleryEyebrow, "All Files"),
-    galleryTitle: textOrDefault(custom.galleryTitle, "Browse and download every file from this delivery."),
+    galleryTitle: textOrDefault(custom.galleryTitle, "Browse your delivery"),
+    gallerySubtitle: textOrDefault(custom.gallerySubtitle, "Preview the gallery, then download everything when you are ready."),
     galleryDescription: textOrDefault(custom.galleryDescription, ""),
     downloadTitle: textOrDefault(custom.downloadTitle, "Download your files"),
     downloadDescription: textOrDefault(custom.downloadDescription, "The album preview is only the beginning. Browse the full delivery and save the files you need."),
     footerText: textOrDefault(custom.footerText, "Delivered with driveOne"),
+    footerNote: textOrDefault(custom.footerNote, "Built by solusivendor.com"),
   };
 }
 
@@ -258,6 +278,8 @@ export function BeautySharePublicClient({
   const themeClass =
     share.theme === "dark"
       ? "bg-[#11110f] text-[#f7f4ec] [--beauty-paper:#fbfaf5] [--beauty-ink:#171717] [--beauty-soft:#e8e3d8] [--beauty-muted:#6d675d] [--beauty-border:rgba(31,28,24,0.16)] [--beauty-table:#d8d3c9]"
+      : share.theme === "cream"
+        ? "bg-[#f3eadb] text-[#1d1a16] [--beauty-paper:#fff8ea] [--beauty-ink:#1d1a16] [--beauty-soft:#eadfcb] [--beauty-muted:#7b6f5d] [--beauty-border:rgba(47,36,20,0.15)] [--beauty-table:#e2d4bf]"
       : "bg-[#ece8df] text-[#171717] [--beauty-paper:#fffdf7] [--beauty-ink:#171717] [--beauty-soft:#e6dfd2] [--beauty-muted:#6b6258] [--beauty-border:rgba(31,28,24,0.14)] [--beauty-table:#ded8cc]";
 
   useEffect(() => {
@@ -338,6 +360,30 @@ export function BeautySharePublicClient({
 
   function scrollToGallery() {
     document.getElementById("gallery")?.scrollIntoView({ behavior: "smooth" });
+  }
+
+  if (share.layout !== "magazine") {
+    return (
+      <ClientDeliveryLayout
+        share={share}
+        items={items}
+        mediaItems={mediaItems}
+        documents={documents}
+        stats={stats}
+        coverItem={coverItem}
+        coverSrc={coverSrc}
+        text={text}
+        layout={share.layout || "clean"}
+        clientName={clientName}
+        downloadHref={downloadHref}
+        lightboxItem={lightboxItem}
+        lightboxIndex={lightboxIndex}
+        onOpenLightbox={openLightbox}
+        onCloseLightbox={() => setLightboxIndex(null)}
+        onNextLightbox={nextLightbox}
+        onPreviousLightbox={previousLightbox}
+      />
+    );
   }
 
   return (
@@ -498,6 +544,258 @@ export function BeautySharePublicClient({
         />
       ) : null}
     </main>
+  );
+}
+
+function ClientDeliveryLayout({
+  share,
+  items,
+  mediaItems,
+  documents,
+  stats,
+  coverItem,
+  coverSrc,
+  text,
+  layout,
+  clientName,
+  downloadHref,
+  lightboxItem,
+  lightboxIndex,
+  onOpenLightbox,
+  onCloseLightbox,
+  onNextLightbox,
+  onPreviousLightbox,
+}: {
+  share: PublicBeautyShare;
+  items: PublicDriveItem[];
+  mediaItems: PublicDriveItem[];
+  documents: PublicDriveItem[];
+  stats: Stats;
+  coverItem: PublicDriveItem | null;
+  coverSrc: string;
+  text: BeautyShareText;
+  layout: Exclude<BeautyLayout, "magazine">;
+  clientName: string;
+  downloadHref: string;
+  lightboxItem: PublicDriveItem | null;
+  lightboxIndex: number | null;
+  onOpenLightbox: (item: PublicDriveItem) => void;
+  onCloseLightbox: () => void;
+  onNextLightbox: () => void;
+  onPreviousLightbox: () => void;
+}) {
+  const featureItems = mediaItems.slice(0, 12);
+  const heroItems = featureItems.length ? featureItems : coverItem ? [coverItem] : [];
+  const isDark = share.theme === "dark";
+  const pageClass =
+    share.theme === "dark"
+      ? "bg-[#090a0c] text-white [--client-paper:#111318] [--client-card:rgba(255,255,255,0.06)] [--client-ink:#ffffff] [--client-muted:rgba(255,255,255,0.62)] [--client-border:rgba(255,255,255,0.12)]"
+      : share.theme === "cream"
+        ? "bg-[#f4efe4] text-[#1d1a16] [--client-paper:#fffaf0] [--client-card:rgba(255,255,255,0.72)] [--client-ink:#1d1a16] [--client-muted:#756b5c] [--client-border:rgba(34,28,18,0.13)]"
+        : "bg-[#f7f8f4] text-[#151515] [--client-paper:#ffffff] [--client-card:rgba(255,255,255,0.78)] [--client-ink:#151515] [--client-muted:#646464] [--client-border:rgba(0,0,0,0.12)]";
+  const heroClass = isDark ? "bg-[#090a0c]" : "bg-[#f3f0e8]";
+  const gridClass =
+    layout === "collage"
+      ? "columns-1 gap-4 sm:columns-2 lg:columns-3"
+      : layout === "grid"
+        ? "grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+        : "grid gap-4 sm:grid-cols-2 lg:grid-cols-3";
+
+  return (
+    <main className={`min-h-screen overflow-x-hidden ${pageClass}`}>
+      <section className={`relative min-h-[92vh] overflow-hidden ${heroClass}`}>
+        {coverSrc ? (
+          <img src={coverSrc} alt="" className="absolute inset-0 h-full w-full object-cover opacity-20 blur-2xl scale-110" />
+        ) : null}
+        <div className={`absolute inset-0 ${isDark ? "bg-gradient-to-br from-black via-black/70 to-black/50" : "bg-gradient-to-br from-white/92 via-white/76 to-transparent"}`} />
+
+        <div className="relative mx-auto grid min-h-[92vh] max-w-7xl items-center gap-10 px-4 py-12 md:grid-cols-[0.9fr_1.1fr] md:px-8">
+          <div className="pt-10 text-center md:pt-0 md:text-left">
+            <p className="text-xs font-black uppercase tracking-[0.26em] text-[#7a8f12] md:text-[#8aa313]">{text.heroEyebrow}</p>
+            <h1 className="mt-5 text-5xl font-black leading-[0.95] tracking-tight text-[var(--client-ink)] md:text-7xl">
+              {text.heroHeadline}
+            </h1>
+            <p className="mx-auto mt-5 max-w-xl text-base font-medium leading-7 text-[var(--client-muted)] md:mx-0 md:text-lg">
+              {text.heroDescription}
+            </p>
+            <p className="mt-4 text-sm font-black text-[var(--client-ink)]">{clientName}</p>
+            <p className="mt-2 text-xs font-black uppercase tracking-[0.2em] text-[var(--client-muted)]">{text.heroMeta}</p>
+
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center md:justify-start">
+              <a href="#gallery" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#d7ff3f] px-6 py-3 text-sm font-black text-black shadow-[0_18px_45px_rgba(130,160,0,0.24)] transition hover:bg-[#c8ef34]">
+                {text.primaryButtonText}
+                <ArrowRight className="h-4 w-4" />
+              </a>
+              {downloadHref && items.length ? (
+                <a href={downloadHref} className="inline-flex items-center justify-center gap-2 rounded-full border border-[var(--client-border)] bg-[var(--client-card)] px-6 py-3 text-sm font-black text-[var(--client-ink)] backdrop-blur transition hover:translate-y-[-1px]">
+                  <Download className="h-4 w-4" />
+                  {text.secondaryButtonText}
+                </a>
+              ) : null}
+            </div>
+
+            <div className="mt-8 grid grid-cols-3 gap-2 text-left">
+              <HeroBadge label="Private access" value={`${stats.total} files`} />
+              <HeroBadge label="Gallery ready" value={`${stats.photos + stats.videos} media`} />
+              <HeroBadge label="Download ready" value={documents.length ? `${documents.length} docs` : "ZIP"} />
+            </div>
+          </div>
+
+          <div className="mx-auto w-full max-w-[620px]">
+            <div className="relative rounded-[2rem] border border-[var(--client-border)] bg-[var(--client-card)] p-3 shadow-[0_34px_110px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+              <div className="rounded-[1.4rem] border border-[var(--client-border)] bg-[var(--client-paper)] p-3">
+                <div className="grid h-[420px] grid-cols-6 grid-rows-6 gap-2 overflow-hidden rounded-[1rem] md:h-[540px]">
+                  {heroItems.slice(0, 7).map((item, index) => (
+                    <button
+                      key={item.path}
+                      type="button"
+                      onClick={() => isMedia(item) && onOpenLightbox(item)}
+                      className={`group relative overflow-hidden bg-black/10 ${index === 0 ? "col-span-4 row-span-4" : index === 1 ? "col-span-2 row-span-3" : index === 2 ? "col-span-2 row-span-3" : index === 3 ? "col-span-3 row-span-2" : "col-span-3 row-span-2"}`}
+                    >
+                      {previewImage(item) ? (
+                        <img src={previewImage(item)} alt={item.name} loading={index === 0 ? "eager" : "lazy"} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+                      ) : (
+                        <MediaPlaceholder item={item} />
+                      )}
+                      {item.type === "video" ? <PlayPill /> : null}
+                    </button>
+                  ))}
+                  {!heroItems.length ? (
+                    <div className="col-span-6 row-span-6 flex items-center justify-center bg-black/10">
+                      <ImageIcon className="h-12 w-12 text-[var(--client-muted)]" />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <FloatingNote className="-left-3 top-8" label="Private access" />
+              <FloatingNote className="-right-2 bottom-12" label="Download ready" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="gallery" className="px-4 py-16 md:px-8 md:py-24">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-[#7a8f12]">{text.galleryEyebrow}</p>
+              <h2 className="mt-3 text-3xl font-black tracking-tight text-[var(--client-ink)] md:text-5xl">{text.galleryTitle}</h2>
+              <p className="mt-3 max-w-2xl text-sm font-medium leading-6 text-[var(--client-muted)]">
+                {text.galleryDescription || text.gallerySubtitle}
+              </p>
+            </div>
+            {downloadHref && items.length ? (
+              <a href={downloadHref} className="inline-flex items-center justify-center gap-2 rounded-full bg-[#d7ff3f] px-5 py-3 text-sm font-black text-black">
+                <Download className="h-4 w-4" />
+                {text.downloadButton}
+              </a>
+            ) : null}
+          </div>
+
+          {mediaItems.length ? (
+            <div className={gridClass}>
+              {mediaItems.map((item, index) => (
+                <button
+                  key={item.path}
+                  type="button"
+                  onClick={() => onOpenLightbox(item)}
+                  className={`group mb-4 block w-full overflow-hidden rounded-2xl border border-[var(--client-border)] bg-[var(--client-paper)] text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl ${
+                    layout === "collage" && index % 5 === 0 ? "break-inside-avoid" : ""
+                  }`}
+                >
+                  <div className={`${layout === "collage" ? (index % 4 === 0 ? "aspect-[4/5]" : "aspect-[4/3]") : "aspect-[4/3]"} relative overflow-hidden bg-black/10`}>
+                    {previewImage(item) ? (
+                      <img src={previewImage(item)} alt={item.name} loading="lazy" className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+                    ) : (
+                      <MediaPlaceholder item={item} />
+                    )}
+                    {item.type === "video" ? <PlayPill /> : null}
+                  </div>
+                  <div className="p-4">
+                    <p className="truncate text-sm font-black text-[var(--client-ink)]">{item.name}</p>
+                    <p className="mt-1 text-xs font-bold text-[var(--client-muted)]">{item.size || typeLabel(item)}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-3xl border border-[var(--client-border)] bg-[var(--client-card)] p-10 text-center text-[var(--client-muted)]">
+              Files are ready below.
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section id="files" className="border-t border-[var(--client-border)] px-4 py-14 md:px-8">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-6">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#7a8f12]">Download section</p>
+            <h2 className="mt-3 text-2xl font-black text-[var(--client-ink)]">{text.downloadTitle}</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--client-muted)]">{text.downloadDescription}</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {items.map((item) => (
+              <FileCard key={item.path} item={item} slug={share.slug} onPreview={onOpenLightbox} />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <footer className="border-t border-[var(--client-border)] px-4 py-7 text-center text-[11px] font-bold text-[var(--client-muted)] md:px-8">
+        <span>{text.footerText}</span>
+        <span> · </span>
+        <a href="https://solusivendor.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--client-ink)]">
+          {text.footerNote}
+        </a>
+      </footer>
+
+      {lightboxItem ? (
+        <Lightbox
+          item={lightboxItem}
+          index={lightboxIndex || 0}
+          total={mediaItems.length}
+          onClose={onCloseLightbox}
+          onNext={onNextLightbox}
+          onPrevious={onPreviousLightbox}
+        />
+      ) : null}
+    </main>
+  );
+}
+
+function HeroBadge({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-[var(--client-border)] bg-[var(--client-card)] p-3 backdrop-blur">
+      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--client-muted)]">{label}</p>
+      <p className="mt-1 text-sm font-black text-[var(--client-ink)]">{value}</p>
+    </div>
+  );
+}
+
+function FloatingNote({ className, label }: { className: string; label: string }) {
+  return (
+    <div className={`absolute hidden rounded-2xl border border-white/40 bg-white/80 px-4 py-3 text-xs font-black text-black shadow-xl backdrop-blur md:block ${className}`}>
+      {label}
+    </div>
+  );
+}
+
+function MediaPlaceholder({ item }: { item: PublicDriveItem }) {
+  const Icon = iconFor(item);
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-black/10 text-[var(--client-muted)]">
+      <Icon className="h-10 w-10" />
+    </div>
+  );
+}
+
+function PlayPill() {
+  return (
+    <span className="absolute inset-0 flex items-center justify-center bg-black/10">
+      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur">
+        <Play className="h-5 w-5 fill-white" />
+      </span>
+    </span>
   );
 }
 

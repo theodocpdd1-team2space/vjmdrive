@@ -2130,8 +2130,8 @@ function UserShareModal({
   const [beautyClientName, setBeautyClientName] = useState("");
   const [beautySlug, setBeautySlug] = useState("");
   const [beautySubtitle, setBeautySubtitle] = useState("Your files are ready.");
-  const [beautyTheme, setBeautyTheme] = useState<"light" | "dark">("light");
-  const [beautyLayout, setBeautyLayout] = useState<"collage" | "grid">("collage");
+  const [beautyTheme, setBeautyTheme] = useState<"light" | "dark" | "cream">("light");
+  const [beautyLayout, setBeautyLayout] = useState<"clean" | "collage" | "grid" | "magazine">("clean");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -2146,7 +2146,7 @@ function UserShareModal({
     setBeautySlug(suggestSlug(item.name));
     setBeautySubtitle("Your files are ready.");
     setBeautyTheme("light");
-    setBeautyLayout("collage");
+    setBeautyLayout("clean");
     setError("");
   }, [item]);
 
@@ -2334,7 +2334,7 @@ function UserShareModal({
                   <div>
                     <p className="text-sm text-zinc-300">Theme</p>
                     <div className="mt-2 grid grid-cols-2 gap-2">
-                      {(["light", "dark"] as const).map((value) => (
+                      {(["light", "dark", "cream"] as const).map((value) => (
                         <button key={value} type="button" onClick={() => setBeautyTheme(value)} className={`rounded-xl border px-3 py-2 text-sm capitalize ${beautyTheme === value ? "border-[#d7ff3f] bg-[#d7ff3f]/10 text-white" : "border-white/10 text-zinc-400"}`}>
                           {value}
                         </button>
@@ -2344,7 +2344,7 @@ function UserShareModal({
                   <div>
                     <p className="text-sm text-zinc-300">Layout</p>
                     <div className="mt-2 grid grid-cols-2 gap-2">
-                      {(["collage", "grid"] as const).map((value) => (
+                      {(["clean", "collage", "grid", "magazine"] as const).map((value) => (
                         <button key={value} type="button" onClick={() => setBeautyLayout(value)} className={`rounded-xl border px-3 py-2 text-sm capitalize ${beautyLayout === value ? "border-[#d7ff3f] bg-[#d7ff3f]/10 text-white" : "border-white/10 text-zinc-400"}`}>
                           {value}
                         </button>

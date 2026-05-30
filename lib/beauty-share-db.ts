@@ -4,16 +4,20 @@ import path from "path";
 import { getCacheRoot } from "./preview-cache";
 import { isDriveSubPath, normalizeDrivePath } from "./safe-path";
 
-export type BeautyShareTheme = "light" | "dark";
-export type BeautyShareLayout = "collage" | "grid" | "magazine";
+export type BeautyShareTheme = "light" | "dark" | "cream";
+export type BeautyShareLayout = "clean" | "collage" | "grid" | "magazine";
 
 export type BeautyShareCustomText = {
   heroEyebrow?: string;
   heroTitle?: string;
+  heroHeadline?: string;
   heroSubtitle?: string;
+  heroDescription?: string;
   heroMeta?: string;
   primaryButton?: string;
+  primaryButtonText?: string;
   secondaryButton?: string;
+  secondaryButtonText?: string;
   downloadButton?: string;
   albumModeLabel?: string;
   albumTitle?: string;
@@ -24,10 +28,12 @@ export type BeautyShareCustomText = {
   introDescription?: string;
   galleryEyebrow?: string;
   galleryTitle?: string;
+  gallerySubtitle?: string;
   galleryDescription?: string;
   downloadTitle?: string;
   downloadDescription?: string;
   footerText?: string;
+  footerNote?: string;
 };
 
 export type BeautyShare = {
@@ -54,10 +60,14 @@ export type BeautyShare = {
 const CUSTOM_TEXT_LIMITS: Record<keyof BeautyShareCustomText, number> = {
   heroEyebrow: 120,
   heroTitle: 160,
+  heroHeadline: 180,
   heroSubtitle: 260,
+  heroDescription: 320,
   heroMeta: 160,
   primaryButton: 80,
+  primaryButtonText: 80,
   secondaryButton: 80,
+  secondaryButtonText: 80,
   downloadButton: 80,
   albumModeLabel: 120,
   albumTitle: 160,
@@ -68,10 +78,12 @@ const CUSTOM_TEXT_LIMITS: Record<keyof BeautyShareCustomText, number> = {
   introDescription: 300,
   galleryEyebrow: 120,
   galleryTitle: 180,
+  gallerySubtitle: 220,
   galleryDescription: 300,
   downloadTitle: 160,
   downloadDescription: 300,
   footerText: 180,
+  footerNote: 220,
 };
 
 export const RESERVED_BEAUTY_SLUGS = new Set([
@@ -159,8 +171,11 @@ function normalizeBeautyShare(raw: Partial<BeautyShare>): BeautyShare {
     title,
     subtitle: raw.subtitle || "",
     clientName: raw.clientName || "",
-    theme: raw.theme === "dark" ? "dark" : "light",
-    layout: raw.layout === "grid" || raw.layout === "magazine" ? raw.layout : "collage",
+    theme: raw.theme === "dark" || raw.theme === "cream" ? raw.theme : "light",
+    layout:
+      raw.layout === "collage" || raw.layout === "grid" || raw.layout === "magazine" || raw.layout === "clean"
+        ? raw.layout
+        : "clean",
     coverFilePath: raw.coverFilePath ? normalizeDrivePath(raw.coverFilePath) : undefined,
     visibility: "PUBLIC",
     isActive: raw.isActive !== false,

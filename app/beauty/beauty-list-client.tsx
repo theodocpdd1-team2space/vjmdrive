@@ -6,10 +6,14 @@ import { Copy, Edit3, ExternalLink, Power, RotateCcw, Save, Sparkles, Trash2, X 
 type BeautyShareCustomText = {
   heroEyebrow?: string;
   heroTitle?: string;
+  heroHeadline?: string;
   heroSubtitle?: string;
+  heroDescription?: string;
   heroMeta?: string;
   primaryButton?: string;
+  primaryButtonText?: string;
   secondaryButton?: string;
+  secondaryButtonText?: string;
   downloadButton?: string;
   albumModeLabel?: string;
   albumTitle?: string;
@@ -20,10 +24,12 @@ type BeautyShareCustomText = {
   introDescription?: string;
   galleryEyebrow?: string;
   galleryTitle?: string;
+  gallerySubtitle?: string;
   galleryDescription?: string;
   downloadTitle?: string;
   downloadDescription?: string;
   footerText?: string;
+  footerNote?: string;
 };
 
 type CustomTextKey = keyof BeautyShareCustomText;
@@ -34,8 +40,8 @@ type BeautyShareRow = {
   title: string;
   subtitle?: string;
   clientName?: string;
-  theme: "light" | "dark";
-  layout: "collage" | "grid" | "magazine";
+  theme: "light" | "dark" | "cream";
+  layout: "clean" | "collage" | "grid" | "magazine";
   isActive: boolean;
   viewCount: number;
   downloadCount: number;
@@ -47,6 +53,8 @@ type EditBasic = {
   title: string;
   subtitle: string;
   clientName: string;
+  theme: "light" | "dark" | "cream";
+  layout: "clean" | "collage" | "grid" | "magazine";
 };
 
 const TEXT_GROUPS: Array<{
@@ -57,11 +65,13 @@ const TEXT_GROUPS: Array<{
     title: "Hero",
     fields: [
       { key: "heroEyebrow", label: "Hero eyebrow", maxLength: 120 },
+      { key: "heroHeadline", label: "Hero headline", maxLength: 180 },
+      { key: "heroDescription", label: "Hero description", multiline: true, maxLength: 320 },
       { key: "heroTitle", label: "Hero title", maxLength: 160 },
       { key: "heroSubtitle", label: "Hero subtitle", multiline: true, maxLength: 260 },
       { key: "heroMeta", label: "Hero meta", maxLength: 160 },
-      { key: "primaryButton", label: "Primary button text", maxLength: 80 },
-      { key: "secondaryButton", label: "Secondary button text", maxLength: 80 },
+      { key: "primaryButtonText", label: "Primary button text", maxLength: 80 },
+      { key: "secondaryButtonText", label: "Secondary button text", maxLength: 80 },
       { key: "downloadButton", label: "Download button text", maxLength: 80 },
     ],
   },
@@ -82,6 +92,7 @@ const TEXT_GROUPS: Array<{
     fields: [
       { key: "galleryEyebrow", label: "Gallery eyebrow", maxLength: 120 },
       { key: "galleryTitle", label: "Gallery title", maxLength: 180 },
+      { key: "gallerySubtitle", label: "Gallery subtitle", maxLength: 220 },
       { key: "galleryDescription", label: "Gallery description", multiline: true, maxLength: 300 },
     ],
   },
@@ -94,7 +105,10 @@ const TEXT_GROUPS: Array<{
   },
   {
     title: "Footer",
-    fields: [{ key: "footerText", label: "Footer text", maxLength: 180 }],
+    fields: [
+      { key: "footerText", label: "Footer text", maxLength: 180 },
+      { key: "footerNote", label: "Footer note", maxLength: 220 },
+    ],
   },
 ];
 
@@ -111,7 +125,7 @@ export function BeautyListClient({ initialShares }: { initialShares: BeautyShare
   const [notice, setNotice] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<BeautyShareRow | null>(null);
   const [editTarget, setEditTarget] = useState<BeautyShareRow | null>(null);
-  const [editBasic, setEditBasic] = useState<EditBasic>({ title: "", subtitle: "", clientName: "" });
+  const [editBasic, setEditBasic] = useState<EditBasic>({ title: "", subtitle: "", clientName: "", theme: "light", layout: "clean" });
   const [editText, setEditText] = useState<BeautyShareCustomText>({});
   const [savingText, setSavingText] = useState(false);
 
@@ -136,6 +150,8 @@ export function BeautyListClient({ initialShares }: { initialShares: BeautyShare
       title: share.title || "",
       subtitle: share.subtitle || "",
       clientName: share.clientName || "",
+      theme: share.theme || "light",
+      layout: share.layout || "clean",
     });
     setEditText(share.customText || {});
     setNotice("");
@@ -152,6 +168,8 @@ export function BeautyListClient({ initialShares }: { initialShares: BeautyShare
         title: editBasic.title,
         subtitle: editBasic.subtitle,
         clientName: editBasic.clientName,
+        theme: editBasic.theme,
+        layout: editBasic.layout,
         customText: cleanTextMap(editText),
       }),
     });
@@ -170,6 +188,8 @@ export function BeautyListClient({ initialShares }: { initialShares: BeautyShare
       title: updated.title || "",
       subtitle: updated.subtitle || "",
       clientName: updated.clientName || "",
+      theme: updated.theme || "light",
+      layout: updated.layout || "clean",
     });
     setEditText(updated.customText || {});
     setNotice("Beauty Share page text saved.");
@@ -339,6 +359,40 @@ export function BeautyListClient({ initialShares }: { initialShares: BeautyShare
                     Slug
                     <input value={`/b/${editTarget.slug}`} readOnly className="rounded-2xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-zinc-400 outline-none" />
                   </label>
+                  <div className="grid gap-1.5 text-sm font-bold text-zinc-300">
+                    Template
+                    <div className="flex flex-wrap gap-2">
+                      {(["clean", "collage", "grid", "magazine"] as const).map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setEditBasic((current) => ({ ...current, layout: value }))}
+                          className={`rounded-xl border px-3 py-2 text-sm capitalize ${
+                            editBasic.layout === value ? "border-[#d7ff3f] bg-[#d7ff3f]/10 text-white" : "border-white/10 text-zinc-400 hover:bg-white/10"
+                          }`}
+                        >
+                          {value}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid gap-1.5 text-sm font-bold text-zinc-300">
+                    Theme
+                    <div className="flex flex-wrap gap-2">
+                      {(["light", "dark", "cream"] as const).map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setEditBasic((current) => ({ ...current, theme: value }))}
+                          className={`rounded-xl border px-3 py-2 text-sm capitalize ${
+                            editBasic.theme === value ? "border-[#d7ff3f] bg-[#d7ff3f]/10 text-white" : "border-white/10 text-zinc-400 hover:bg-white/10"
+                          }`}
+                        >
+                          {value}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </details>
 

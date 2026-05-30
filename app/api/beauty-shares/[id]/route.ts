@@ -45,8 +45,8 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/beauty-shares/
 
   if (typeof body?.subtitle === "string") patch.subtitle = cleanText(body.subtitle, 260) || "";
   if (typeof body?.clientName === "string") patch.clientName = cleanText(body.clientName, 160) || "";
-  if (body?.theme === "dark" || body?.theme === "light") patch.theme = body.theme;
-  if (body?.layout === "collage" || body?.layout === "grid" || body?.layout === "magazine") patch.layout = body.layout;
+  if (body?.theme === "dark" || body?.theme === "light" || body?.theme === "cream") patch.theme = body.theme;
+  if (body?.layout === "clean" || body?.layout === "collage" || body?.layout === "grid" || body?.layout === "magazine") patch.layout = body.layout;
   if (typeof body?.isActive === "boolean") patch.isActive = body.isActive;
   if (body && typeof body === "object" && "customText" in body) {
     patch.customText = normalizeBeautyShareCustomText(body.customText);

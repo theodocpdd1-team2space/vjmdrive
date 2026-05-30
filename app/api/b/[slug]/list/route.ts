@@ -30,6 +30,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/b/[slug]/lis
         clientName: share.clientName || "",
         theme: share.theme,
         layout: share.layout,
+        customText: share.customText,
       },
       ...data,
     });
