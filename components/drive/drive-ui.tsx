@@ -171,17 +171,23 @@ export function FileThumbnail({
   size?: "grid" | "row" | "compact" | "modal";
 }) {
   const isSmall = size === "row" || size === "compact";
+  const [imageFailed, setImageFailed] = useState(false);
   const imageSrc =
     item.type === "image"
       ? item.thumbnailUrl || item.previewUrl || item.originalUrl
       : item.type === "video"
         ? item.thumbnailUrl
         : null;
+  const displayImageSrc = imageFailed ? null : imageSrc;
   const wrapperClass = isSmall
     ? "h-10 w-10"
     : size === "modal"
       ? "h-full min-h-72 w-full"
       : "aspect-video w-full";
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [imageSrc]);
 
   return (
     <span
@@ -191,14 +197,15 @@ export function FileThumbnail({
           : "border-white/10 bg-black/30 text-zinc-400"
       } ${wrapperClass}`}
     >
-      {imageSrc ? (
+      {displayImageSrc ? (
         <Image
-          src={imageSrc}
+          src={displayImageSrc}
           alt={item.name}
           fill
           sizes={isSmall ? "40px" : "(max-width: 768px) 50vw, 260px"}
           unoptimized
           className="object-cover"
+          onError={() => setImageFailed(true)}
         />
       ) : (
         <span className="flex h-full w-full items-center justify-center">

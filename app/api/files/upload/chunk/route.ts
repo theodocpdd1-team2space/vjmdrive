@@ -13,11 +13,18 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function errorResponse(caught: unknown, step: "chunk", status = 400) {
+  const rawMessage = caught instanceof Error ? caught.message : "Chunk upload failed";
+  const message = rawMessage.replace(/'\/[^']+'/g, "'[server path]'");
+  console.error("[chunk-upload:chunk]", caught);
+  return NextResponse.json({ ok: false, error: message, message, step }, { status });
+}
+
 export async function POST(req: NextRequest) {
   const session = await getCurrentUser();
-  if (!session) return NextResponse.json({ ok: false, message: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized", message: "Unauthorized", step: "chunk" }, { status: 401 });
   const user = await findUserById(session.id);
-  if (!user) return NextResponse.json({ ok: false, message: "Unauthorized" }, { status: 401 });
+  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized", message: "Unauthorized", step: "chunk" }, { status: 401 });
 
   try {
     const formData = await req.formData();
@@ -36,9 +43,6 @@ export async function POST(req: NextRequest) {
     await fs.writeFile(destination, Buffer.from(await chunk.arrayBuffer()));
     return NextResponse.json({ ok: true, chunkIndex });
   } catch (caught) {
-    return NextResponse.json(
-      { ok: false, message: caught instanceof Error ? caught.message : "Chunk upload failed" },
-      { status: 400 }
-    );
+    return errorResponse(caught, "chunk");
   }
 }

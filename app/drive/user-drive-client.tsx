@@ -131,7 +131,8 @@ type DataTransferItemWithEntry = DataTransferItem & {
 };
 
 const CHUNK_UPLOAD_THRESHOLD = 80 * 1024 * 1024;
-const CHUNK_SIZE = 10 * 1024 * 1024;
+const CHUNK_SIZE = 25 * 1024 * 1024;
+const CHUNK_UPLOAD_CONCURRENCY = 2;
 const UPLOAD_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
 function uploadId(file: File, relativePath: string) {
@@ -417,23 +418,75 @@ async function uploadChunkedFileWithProgress({
     const serverChunkSize = init.chunkSize || CHUNK_SIZE;
     const serverTotalChunks = init.totalChunks || totalChunks;
     let completedBytes = 0;
+    let nextChunkIndex = 0;
+    let failed = false;
+    let firstError: unknown = null;
+    const activeChunkBytes = new Map<number, number>();
 
-    for (let chunkIndex = 0; chunkIndex < serverTotalChunks; chunkIndex += 1) {
+    function chunkSizeAt(chunkIndex: number) {
       const start = chunkIndex * serverChunkSize;
       const end = Math.min(start + serverChunkSize, file.size);
-      const chunk = file.slice(start, end);
-      const message = `Uploading chunk ${chunkIndex + 1} / ${serverTotalChunks}`;
-
-      emitProgress(completedBytes, message);
-      await uploadChunkRequest({
-        uploadId,
-        chunkIndex,
-        chunk,
-        onProgress: (chunkLoadedBytes) => emitProgress(completedBytes + chunkLoadedBytes, message),
-      });
-      completedBytes += chunk.size;
-      emitProgress(completedBytes, message);
+      return Math.max(end - start, 0);
     }
+
+    function uploadMessage() {
+      const active = [...activeChunkBytes.keys()].sort((a, b) => a - b);
+      if (!active.length) return `Uploading chunks / ${serverTotalChunks}`;
+      if (active.length === 1) return `Uploading chunk ${active[0] + 1} / ${serverTotalChunks}`;
+
+      const first = active[0] + 1;
+      const last = active[active.length - 1] + 1;
+      return last - first + 1 === active.length
+        ? `Uploading chunks ${first}-${last} / ${serverTotalChunks}`
+        : `Uploading ${active.length} chunks / ${serverTotalChunks}`;
+    }
+
+    function emitChunkProgress() {
+      const activeBytes = [...activeChunkBytes.values()].reduce((sum, bytes) => sum + bytes, 0);
+      emitProgress(completedBytes + activeBytes, uploadMessage());
+    }
+
+    async function uploadChunkWorker() {
+      for (;;) {
+        if (failed) return;
+        const chunkIndex = nextChunkIndex;
+        nextChunkIndex += 1;
+        if (chunkIndex >= serverTotalChunks) return;
+
+        const start = chunkIndex * serverChunkSize;
+        const end = Math.min(start + serverChunkSize, file.size);
+        const chunk = file.slice(start, end);
+        activeChunkBytes.set(chunkIndex, 0);
+        emitChunkProgress();
+
+        try {
+          await uploadChunkRequest({
+            uploadId,
+            chunkIndex,
+            chunk,
+            onProgress: (chunkLoadedBytes) => {
+              activeChunkBytes.set(chunkIndex, Math.min(chunkLoadedBytes, chunk.size));
+              emitChunkProgress();
+            },
+          });
+          completedBytes += chunkSizeAt(chunkIndex);
+          activeChunkBytes.delete(chunkIndex);
+          emitChunkProgress();
+        } catch (caught) {
+          failed = true;
+          firstError = caught;
+          activeChunkBytes.delete(chunkIndex);
+          emitChunkProgress();
+          return;
+        }
+      }
+    }
+
+    emitProgress(0, `Optimized upload: ${formatBytes(serverChunkSize)} chunks · ${CHUNK_UPLOAD_CONCURRENCY} at a time`);
+    await Promise.all(
+      Array.from({ length: Math.min(CHUNK_UPLOAD_CONCURRENCY, serverTotalChunks) }, () => uploadChunkWorker())
+    );
+    if (failed) throw firstError instanceof Error ? firstError : new Error("Chunk upload failed.");
 
     emitProgress(file.size, "Finalizing upload...");
     let completed: UploadApiResponse;
@@ -1651,6 +1704,7 @@ function UploadModal({
   });
   const visibleSelections = orderedSelections.slice(0, 20);
   const hiddenSelections = Math.max(orderedSelections.length - visibleSelections.length, 0);
+  const hasChunkedFiles = selections.some((item) => item.size > CHUNK_UPLOAD_THRESHOLD);
 
   function completeUploadLabel() {
     if (!total) return "-";
@@ -1682,6 +1736,11 @@ function UploadModal({
               {total ? `${uploaded} / ${total} uploaded` : "Drag files here or choose files from your device."}
               {failed ? ` · ${failed} failed` : ""}
             </p>
+            {hasChunkedFiles ? (
+              <p className="mt-1 text-xs text-zinc-600">
+                Optimized upload: {formatBytes(CHUNK_SIZE)} chunks · {CHUNK_UPLOAD_CONCURRENCY} at a time
+              </p>
+            ) : null}
           </div>
           <button
             onClick={onClose}

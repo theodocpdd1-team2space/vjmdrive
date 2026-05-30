@@ -13,11 +13,18 @@ import { resolveUserDrivePath } from "@/lib/user-files";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function errorResponse(caught: unknown, status = 400) {
+  const rawMessage = caught instanceof Error ? caught.message : "Upload init failed";
+  const message = rawMessage.replace(/'\/[^']+'/g, "'[server path]'");
+  console.error("[chunk-upload:init]", caught);
+  return NextResponse.json({ ok: false, error: message, message, step: "init" }, { status });
+}
+
 export async function POST(req: NextRequest) {
   const session = await getCurrentUser();
-  if (!session) return NextResponse.json({ ok: false, message: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ ok: false, error: "Unauthorized", message: "Unauthorized", step: "init" }, { status: 401 });
   const user = await findUserById(session.id);
-  if (!user) return NextResponse.json({ ok: false, message: "Unauthorized" }, { status: 401 });
+  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized", message: "Unauthorized", step: "init" }, { status: 401 });
 
   try {
     await cleanupStaleChunkUploads();
@@ -50,9 +57,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, uploadId, chunkSize, totalChunks });
   } catch (caught) {
-    return NextResponse.json(
-      { ok: false, message: caught instanceof Error ? caught.message : "Upload init failed" },
-      { status: 400 }
-    );
+    return errorResponse(caught);
   }
 }

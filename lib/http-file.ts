@@ -1,5 +1,4 @@
 import fs from "fs";
-import { Readable } from "stream";
 
 export type ByteRange = {
   start: number;
@@ -41,5 +40,53 @@ export function parseRange(range: string | null, size: number): ByteRange | null
 
 export function nodeStream(filePath: string, range?: ByteRange) {
   const stream = fs.createReadStream(filePath, range);
-  return Readable.toWeb(stream) as ReadableStream<Uint8Array>;
+  let closed = false;
+
+  function isClosedControllerError(caught: unknown) {
+    return caught instanceof TypeError && caught.message.includes("Controller is already closed");
+  }
+
+  function reportUnexpectedStreamError(caught: unknown) {
+    console.error("[http-file] stream controller error", caught);
+  }
+
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      stream.on("data", (chunk) => {
+        if (closed) return;
+        try {
+          const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          controller.enqueue(new Uint8Array(bytes));
+        } catch (caught) {
+          if (!isClosedControllerError(caught)) reportUnexpectedStreamError(caught);
+          closed = true;
+          stream.destroy();
+        }
+      });
+
+      stream.on("end", () => {
+        if (closed) return;
+        closed = true;
+        try {
+          controller.close();
+        } catch (caught) {
+          if (!isClosedControllerError(caught)) reportUnexpectedStreamError(caught);
+        }
+      });
+
+      stream.on("error", (error) => {
+        if (closed) return;
+        closed = true;
+        try {
+          controller.error(error);
+        } catch (caught) {
+          if (!isClosedControllerError(caught)) reportUnexpectedStreamError(caught);
+        }
+      });
+    },
+    cancel() {
+      closed = true;
+      stream.destroy();
+    },
+  });
 }
