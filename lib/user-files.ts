@@ -1,5 +1,6 @@
 import fs from "fs/promises";
-import { createWriteStream } from "fs";
+import { createReadStream, createWriteStream } from "fs";
+import type { PathLike } from "fs";
 import path from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
@@ -21,6 +22,35 @@ export async function assertUserQuota(user: DriveUser, incomingBytes = 0) {
   if (user.quotaBytes === null) return;
   const used = await directorySize(userStoragePath(user.id));
   if (used + incomingBytes > user.quotaBytes) throw new Error("Storage quota exceeded");
+}
+
+async function prepareUserUploadDestination(user: DriveUser, targetPath: string, fileName: string, relativePath = "") {
+  await ensureUserStorage(user.id);
+
+  const root = userStorageRelativePath(user.id);
+  const fullTargetPath = resolveUserDrivePath(user.id, targetPath);
+  const target = resolveSafePath(fullTargetPath);
+  await assertRealPathInsideRoot(target.root, target.absolutePath);
+  const targetStat = await fs.stat(target.absolutePath);
+  if (!targetStat.isDirectory()) throw new Error("Target is not a folder");
+
+  const requestedRelativePath = relativePath ? normalizeDrivePath(relativePath) : "";
+  const folderRelativePath = requestedRelativePath ? path.posix.dirname(requestedRelativePath) : "";
+  const safeFolderRelativePath = folderRelativePath === "." ? "" : normalizeDrivePath(folderRelativePath);
+  const safeName = assertSafeName(requestedRelativePath ? path.posix.basename(requestedRelativePath) : fileName);
+  const fullFolderPath = safeFolderRelativePath ? path.posix.join(fullTargetPath, safeFolderRelativePath) : fullTargetPath;
+
+  if (!isDriveSubPath(root, fullFolderPath)) throw new Error("Invalid upload path");
+
+  const destinationFolder = resolveSafePath(fullFolderPath);
+  await fs.mkdir(destinationFolder.absolutePath, { recursive: true });
+  await assertRealPathInsideRoot(destinationFolder.root, destinationFolder.absolutePath);
+
+  const destination = await ensureUniquePath(destinationFolder.absolutePath, safeName);
+  return {
+    destination,
+    uploadedRelativePath: path.posix.relative(root, path.posix.join(fullFolderPath, path.basename(destination))),
+  };
 }
 
 export async function createUserFolder(user: DriveUser, parentPath: string, name: string) {
@@ -47,33 +77,57 @@ export async function uploadUserFiles(user: DriveUser, targetPath: string, files
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   await assertUserQuota(user, totalBytes);
 
-  const root = userStorageRelativePath(user.id);
-  const fullTargetPath = resolveUserDrivePath(user.id, targetPath);
-  const target = resolveSafePath(fullTargetPath);
-  await assertRealPathInsideRoot(target.root, target.absolutePath);
-  const targetStat = await fs.stat(target.absolutePath);
-  if (!targetStat.isDirectory()) throw new Error("Target is not a folder");
-
   const uploaded: string[] = [];
   for (const [index, file] of files.entries()) {
     await assertUserQuota(user, file.size);
-    const requestedRelativePath = relativePaths[index] ? normalizeDrivePath(relativePaths[index]) : "";
-    const folderRelativePath = requestedRelativePath ? path.posix.dirname(requestedRelativePath) : "";
-    const safeFolderRelativePath = folderRelativePath === "." ? "" : normalizeDrivePath(folderRelativePath);
-    const safeName = assertSafeName(requestedRelativePath ? path.posix.basename(requestedRelativePath) : file.name);
-    const fullFolderPath = safeFolderRelativePath ? path.posix.join(fullTargetPath, safeFolderRelativePath) : fullTargetPath;
-
-    if (!isDriveSubPath(root, fullFolderPath)) throw new Error("Invalid upload path");
-
-    const destinationFolder = resolveSafePath(fullFolderPath);
-    await fs.mkdir(destinationFolder.absolutePath, { recursive: true });
-    await assertRealPathInsideRoot(destinationFolder.root, destinationFolder.absolutePath);
-
-    const destination = await ensureUniquePath(destinationFolder.absolutePath, safeName);
+    const { destination, uploadedRelativePath } = await prepareUserUploadDestination(
+      user,
+      targetPath,
+      file.name,
+      relativePaths[index] || ""
+    );
     await pipeline(Readable.fromWeb(file.stream() as unknown as NodeReadableStream), createWriteStream(destination));
-    uploaded.push(path.posix.relative(root, path.posix.join(fullFolderPath, path.basename(destination))));
+    uploaded.push(uploadedRelativePath);
   }
   return uploaded;
+}
+
+export async function uploadUserFileFromChunks({
+  user,
+  targetPath,
+  fileName,
+  relativePath,
+  fileSize,
+  chunkPaths,
+}: {
+  user: DriveUser;
+  targetPath: string;
+  fileName: string;
+  relativePath: string;
+  fileSize: number;
+  chunkPaths: PathLike[];
+}) {
+  await ensureUserStorage(user.id);
+  await assertUserQuota(user, fileSize);
+
+  const { destination, uploadedRelativePath } = await prepareUserUploadDestination(user, targetPath, fileName, relativePath);
+
+  try {
+    for (const [index, chunkPath] of chunkPaths.entries()) {
+      await pipeline(createReadStream(chunkPath), createWriteStream(destination, { flags: index === 0 ? "wx" : "a" }));
+    }
+
+    const stat = await fs.stat(destination);
+    if (stat.size !== fileSize) {
+      await fs.rm(destination, { force: true });
+      throw new Error("Upload verification failed: assembled file size does not match original file size.");
+    }
+
+    return uploadedRelativePath;
+  } catch (caught) {
+    await fs.rm(destination, { force: true }).catch(() => undefined);
+    throw caught;
+  }
 }
 
 export async function moveUserItems(user: DriveUser, items: string[], targetFolder: string) {

@@ -65,6 +65,7 @@ type UploadSelection = {
   status: UploadStatus;
   speedBytesPerSecond: number;
   etaSeconds: number | null;
+  progressMessage?: string;
   errorMessage?: string;
 };
 
@@ -81,6 +82,12 @@ type UploadApiResponse = {
   message?: string;
   uploaded?: string[];
   [key: string]: unknown;
+};
+
+type ChunkInitResponse = UploadApiResponse & {
+  uploadId?: string;
+  chunkSize?: number;
+  totalChunks?: number;
 };
 
 type UploadTotals = {
@@ -115,6 +122,9 @@ type FileSystemDirectoryEntryLike = FileSystemEntryLike & {
 type DataTransferItemWithEntry = DataTransferItem & {
   webkitGetAsEntry?: () => FileSystemEntryLike | null;
 };
+
+const CHUNK_UPLOAD_THRESHOLD = 80 * 1024 * 1024;
+const CHUNK_SIZE = 10 * 1024 * 1024;
 
 function uploadId(file: File, relativePath: string) {
   return `${relativePath || file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`;
@@ -245,6 +255,176 @@ function uploadSingleFileWithProgress({
   });
 }
 
+function uploadChunkRequest({
+  uploadId,
+  chunkIndex,
+  chunk,
+  onProgress,
+}: {
+  uploadId: string;
+  chunkIndex: number;
+  chunk: Blob;
+  onProgress: (loadedBytes: number) => void;
+}) {
+  return new Promise<UploadApiResponse>((resolve, reject) => {
+    const form = new FormData();
+    form.set("uploadId", uploadId);
+    form.set("chunkIndex", String(chunkIndex));
+    form.append("chunk", chunk, `chunk-${chunkIndex}.part`);
+
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onprogress = (event) => {
+      onProgress(Math.min(event.loaded, chunk.size));
+    };
+    xhr.onload = () => {
+      let data: UploadApiResponse = {};
+      try {
+        data = xhr.responseText ? (JSON.parse(xhr.responseText) as UploadApiResponse) : {};
+      } catch {
+        data = {};
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300 && data.ok) {
+        resolve(data);
+        return;
+      }
+
+      reject(new Error(data.message || `Chunk ${chunkIndex + 1} upload failed.`));
+    };
+    xhr.onerror = () => reject(new Error(`Network error while uploading chunk ${chunkIndex + 1}.`));
+    xhr.onabort = () => reject(new Error(`Chunk ${chunkIndex + 1} upload canceled.`));
+    xhr.open("POST", "/api/files/upload/chunk");
+    xhr.send(form);
+  });
+}
+
+async function postUploadJson<T extends UploadApiResponse>(url: string, body: Record<string, unknown>, fallbackMessage: string) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as T;
+  if (!res.ok || !data.ok) throw new Error(data.message || fallbackMessage);
+  return data;
+}
+
+async function abortChunkUpload(uploadId: string) {
+  await fetch("/api/files/upload/abort", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uploadId }),
+  }).catch(() => undefined);
+}
+
+async function uploadChunkedFileWithProgress({
+  file,
+  currentFolder,
+  relativePath,
+  onProgress,
+}: {
+  file: File;
+  currentFolder: string;
+  relativePath: string;
+  onProgress: (progress: UploadProgress & { message?: string }) => void;
+}) {
+  const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+  const startedAt = performance.now();
+  let uploadId = "";
+
+  function emitProgress(loadedBytes: number, message: string) {
+    const safeLoadedBytes = file.size > 0 ? Math.min(file.size - 1, Math.max(0, loadedBytes)) : 0;
+    const elapsedSeconds = Math.max((performance.now() - startedAt) / 1000, 0.001);
+    const speedBytesPerSecond = safeLoadedBytes / elapsedSeconds;
+    const remainingBytes = Math.max(file.size - safeLoadedBytes, 0);
+
+    onProgress({
+      loadedBytes: safeLoadedBytes,
+      totalBytes: file.size,
+      percent: file.size ? Math.min(99, (safeLoadedBytes / file.size) * 100) : 0,
+      speedBytesPerSecond,
+      etaSeconds: speedBytesPerSecond > 0 ? remainingBytes / speedBytesPerSecond : null,
+      message,
+    });
+  }
+
+  try {
+    const init = await postUploadJson<ChunkInitResponse>(
+      "/api/files/upload/init",
+      {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        currentPath: currentFolder,
+        relativePath: relativePath || file.name,
+        totalChunks,
+        chunkSize: CHUNK_SIZE,
+      },
+      "Upload init failed."
+    );
+
+    if (!init.uploadId) throw new Error("Upload init failed.");
+    uploadId = init.uploadId;
+    const serverChunkSize = init.chunkSize || CHUNK_SIZE;
+    const serverTotalChunks = init.totalChunks || totalChunks;
+    let completedBytes = 0;
+
+    for (let chunkIndex = 0; chunkIndex < serverTotalChunks; chunkIndex += 1) {
+      const start = chunkIndex * serverChunkSize;
+      const end = Math.min(start + serverChunkSize, file.size);
+      const chunk = file.slice(start, end);
+      const message = `Uploading chunk ${chunkIndex + 1} / ${serverTotalChunks}`;
+
+      emitProgress(completedBytes, message);
+      await uploadChunkRequest({
+        uploadId,
+        chunkIndex,
+        chunk,
+        onProgress: (chunkLoadedBytes) => emitProgress(completedBytes + chunkLoadedBytes, message),
+      });
+      completedBytes += chunk.size;
+      emitProgress(completedBytes, message);
+    }
+
+    emitProgress(file.size, "Finalizing upload...");
+    const completed = await postUploadJson<UploadApiResponse>(
+      "/api/files/upload/complete",
+      { uploadId },
+      "Upload finalizing failed."
+    );
+    onProgress({
+      loadedBytes: file.size,
+      totalBytes: file.size,
+      percent: 100,
+      speedBytesPerSecond: 0,
+      etaSeconds: null,
+      message: "Queued for preview after complete",
+    });
+    return completed;
+  } catch (caught) {
+    if (uploadId) await abortChunkUpload(uploadId);
+    throw caught;
+  }
+}
+
+function uploadFileWithProgress({
+  file,
+  currentFolder,
+  relativePath,
+  onProgress,
+}: {
+  file: File;
+  currentFolder: string;
+  relativePath: string;
+  onProgress: (progress: UploadProgress & { message?: string }) => void;
+}) {
+  if (file.size > CHUNK_UPLOAD_THRESHOLD) {
+    return uploadChunkedFileWithProgress({ file, currentFolder, relativePath, onProgress });
+  }
+
+  return uploadSingleFileWithProgress({ file, currentFolder, relativePath, onProgress });
+}
+
 function calculateUploadTotals(selections: UploadSelection[]): UploadTotals {
   const totalBytes = selections.reduce((sum, item) => sum + item.totalBytes, 0);
   const uploadedBytes = selections.reduce((sum, item) => sum + Math.min(item.uploadedBytes, item.totalBytes), 0);
@@ -371,7 +551,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
   }
 
   async function uploadOne(selection: UploadSelection) {
-    return uploadSingleFileWithProgress({
+    return uploadFileWithProgress({
       file: selection.file,
       currentFolder: path,
       relativePath: selection.relativePath || selection.file.name,
@@ -391,6 +571,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
                   percent: progress.percent,
                   speedBytesPerSecond: progress.speedBytesPerSecond,
                   etaSeconds: progress.etaSeconds,
+                  progressMessage: progress.message,
                 }
               : item
           )
@@ -417,6 +598,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
               percent: 0,
               speedBytesPerSecond: 0,
               etaSeconds: null,
+              progressMessage: undefined,
               errorMessage: undefined,
             }
           : item
@@ -444,6 +626,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
                   percent: 0,
                   speedBytesPerSecond: 0,
                   etaSeconds: null,
+                  progressMessage: undefined,
                   errorMessage: undefined,
                 }
               : item
@@ -462,6 +645,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
                     percent: 100,
                     speedBytesPerSecond: 0,
                     etaSeconds: null,
+                    progressMessage: "Queued for preview after complete",
                     errorMessage: undefined,
                   }
                 : item
@@ -477,6 +661,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
                     status: "failed",
                     speedBytesPerSecond: 0,
                     etaSeconds: null,
+                    progressMessage: undefined,
                     errorMessage: caught instanceof Error ? caught.message : "Upload failed.",
                   }
                 : item
@@ -1376,7 +1561,9 @@ function UploadModal({
   const failed = totals.failedFiles;
   const pending = selections.filter((item) => item.status === "pending" || item.status === "queued").length;
   const activeSelections = selections.filter((item) => item.status === "uploading");
-  const currentNames = activeSelections.map((item) => item.relativePath || item.name);
+  const currentNames = activeSelections.map((item) =>
+    item.progressMessage ? `${item.relativePath || item.name}: ${item.progressMessage}` : item.relativePath || item.name
+  );
   const currentLabel = currentNames.length
     ? `${currentNames[0]}${currentNames.length > 1 ? ` + ${currentNames.length - 1} more` : ""}`
     : uploading
@@ -1415,6 +1602,11 @@ function UploadModal({
     if (status === "uploading") return "bg-blue-300/10 text-blue-100";
     if (status === "queued") return "bg-amber-300/10 text-amber-100";
     return "bg-white/10 text-zinc-400";
+  }
+
+  function statusLabel(item: UploadSelection) {
+    if (item.status === "uploading" && item.progressMessage?.startsWith("Finalizing")) return "finalizing";
+    return item.status;
   }
 
   return (
@@ -1547,6 +1739,7 @@ function UploadModal({
                       {item.status === "uploading" ? <span>{Math.round(item.percent)}%</span> : null}
                       {item.status === "uploading" ? <span>{formatSpeed(item.speedBytesPerSecond)}</span> : null}
                     </div>
+                    {item.progressMessage ? <p className="mt-1 text-xs text-zinc-400">{item.progressMessage}</p> : null}
                     {item.status === "uploading" ? (
                       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
                         <div className="h-full rounded-full bg-blue-300 transition-all" style={{ width: `${Math.min(item.percent, 99)}%` }} />
@@ -1557,7 +1750,7 @@ function UploadModal({
                   <div className="flex shrink-0 items-center gap-2">
                     {item.status === "uploaded" ? <CheckSquare className="h-4 w-4 text-[#d7ff3f]" /> : null}
                     <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${statusClass(item.status)}`}>
-                      {item.status}
+                      {statusLabel(item)}
                     </span>
                     {!uploading && item.status !== "uploaded" ? (
                       <button type="button" onClick={() => onRemove(item.id)} className="rounded-lg p-1 text-zinc-500 hover:bg-white/10 hover:text-white" aria-label={`Remove ${item.name}`}>
