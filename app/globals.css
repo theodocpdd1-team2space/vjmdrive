@@ -55,6 +55,112 @@ body {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.upload-modal-panel {
+  animation: uploadModalEnter 180ms ease-out both;
+}
+
+.upload-modal-backdrop-exit {
+  animation: uploadBackdropExit 260ms ease-in both;
+}
+
+.upload-modal-panel-exit {
+  animation: uploadModalExit 260ms ease-in both;
+}
+
+.upload-success-state {
+  animation: uploadSuccessFadeUp 360ms ease-out both;
+}
+
+.upload-success-orbit {
+  position: relative;
+  animation: uploadSuccessPop 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.upload-success-orbit::before {
+  content: "";
+  position: absolute;
+  inset: -10px;
+  border-radius: 9999px;
+  border: 1px solid rgba(215, 255, 63, 0.2);
+  animation: uploadSuccessPulse 1600ms ease-out infinite;
+}
+
+.upload-success-check {
+  animation: uploadSuccessCheck 540ms 90ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes uploadModalEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes uploadBackdropExit {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes uploadModalExit {
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.975);
+  }
+}
+
+@keyframes uploadSuccessFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes uploadSuccessPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes uploadSuccessPulse {
+  0% {
+    opacity: 0.68;
+    transform: scale(0.86);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.32);
+  }
+}
+
+@keyframes uploadSuccessCheck {
+  from {
+    opacity: 0;
+    transform: scale(0.72) rotate(-8deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
 html[data-theme="light"] .drive-user-theme {
   background: #f7f8f3 !important;
   color: #111827 !important;

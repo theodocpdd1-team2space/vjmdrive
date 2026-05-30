@@ -8,6 +8,7 @@ import {
   CalendarClock,
   CheckSquare,
   ChevronRight,
+  CircleCheck,
   Copy,
   Download,
   ExternalLink,
@@ -1666,8 +1667,7 @@ function UploadModal({
   onClose: () => void;
 }) {
   const [dragActive, setDragActive] = useState(false);
-
-  if (!open) return null;
+  const [closing, setClosing] = useState(false);
 
   const total = selections.length;
   const totals = calculateUploadTotals(selections);
@@ -1705,6 +1705,25 @@ function UploadModal({
   const visibleSelections = orderedSelections.slice(0, 20);
   const hiddenSelections = Math.max(orderedSelections.length - visibleSelections.length, 0);
   const hasChunkedFiles = selections.some((item) => item.size > CHUNK_UPLOAD_THRESHOLD);
+  const successComplete = complete && failed === 0;
+
+  const beginClose = useCallback(() => {
+    if (uploading) return;
+    setClosing(true);
+    window.setTimeout(() => onClose(), 260);
+  }, [onClose, uploading]);
+
+  useEffect(() => {
+    if (open) setClosing(false);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !successComplete || uploading) return;
+    const timer = window.setTimeout(() => beginClose(), 2300);
+    return () => window.clearTimeout(timer);
+  }, [beginClose, open, successComplete, uploading]);
+
+  if (!open) return null;
 
   function completeUploadLabel() {
     if (!total) return "-";
@@ -1726,24 +1745,32 @@ function UploadModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4">
-      <div className="max-h-[92vh] w-full overflow-auto rounded-t-3xl border border-white/10 bg-[#101217] p-4 shadow-2xl md:max-w-2xl md:rounded-3xl">
+    <div className={`fixed inset-0 z-[110] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4 ${closing ? "upload-modal-backdrop-exit" : ""}`}>
+      <div className={`upload-modal-panel max-h-[92vh] w-full overflow-auto rounded-t-3xl border border-white/10 bg-[#101217] p-4 shadow-2xl md:max-w-2xl md:rounded-3xl ${closing ? "upload-modal-panel-exit" : ""}`}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-[#d7ff3f]">Current folder: {path || "Home"}</p>
-            <h2 className="mt-2 text-xl font-black text-white">{title}</h2>
-            <p className="mt-1 text-sm text-zinc-500">
-              {total ? `${uploaded} / ${total} uploaded` : "Drag files here or choose files from your device."}
-              {failed ? ` · ${failed} failed` : ""}
-            </p>
-            {hasChunkedFiles ? (
+            <h2 className="mt-2 text-xl font-black text-white">
+              {successComplete ? "Upload complete" : title}
+            </h2>
+            {successComplete ? (
+              <p className="mt-1 text-sm text-zinc-500">
+                {uploaded} {uploaded === 1 ? "file" : "files"} uploaded successfully.
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-zinc-500">
+                {total ? `${uploaded} / ${total} uploaded` : "Drag files here or choose files from your device."}
+                {failed ? ` · ${failed} failed` : ""}
+              </p>
+            )}
+            {hasChunkedFiles && !successComplete ? (
               <p className="mt-1 text-xs text-zinc-600">
                 Optimized upload: {formatBytes(CHUNK_SIZE)} chunks · {CHUNK_UPLOAD_CONCURRENCY} at a time
               </p>
             ) : null}
           </div>
           <button
-            onClick={onClose}
+            onClick={beginClose}
             disabled={uploading}
             title={uploading ? "Upload still running" : "Close upload modal"}
             className="rounded-xl p-2 text-zinc-400 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
@@ -1753,155 +1780,196 @@ function UploadModal({
           </button>
         </div>
 
-        <div
-          onDragEnter={(event) => {
-            event.preventDefault();
-            setDragActive(true);
-          }}
-          onDragOver={(event) => {
-            event.preventDefault();
-            setDragActive(true);
-          }}
-          onDragLeave={(event) => {
-            event.preventDefault();
-            setDragActive(false);
-          }}
-          onDrop={(event) => {
-            event.preventDefault();
-            setDragActive(false);
-            if (uploading) return;
-            onDropFiles(event.dataTransfer);
-          }}
-          className={`mt-5 rounded-3xl border border-dashed p-6 text-center transition ${
-            dragActive ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/15 bg-black/20"
-          }`}
-        >
-          <Upload className="mx-auto h-8 w-8 text-[#d7ff3f]" />
-          <p className="mt-3 font-black text-white">Drag and drop files or folders</p>
-          <p className="mt-1 text-sm text-zinc-500">Folder paths are preserved when your browser provides them.</p>
+        {successComplete ? (
+          <div className="upload-success-state mt-6 flex min-h-[360px] flex-col items-center justify-center px-3 py-8 text-center md:min-h-[420px]">
+            <div className="upload-success-orbit flex h-24 w-24 items-center justify-center rounded-full border border-[#d7ff3f]/30 bg-[#d7ff3f]/10 text-[#d7ff3f] shadow-[0_0_55px_rgba(215,255,63,0.18)]">
+              <CircleCheck className="upload-success-check h-12 w-12" />
+            </div>
+            <p className="mt-6 text-2xl font-black text-white">Upload complete</p>
+            <p className="mt-2 max-w-md text-sm text-zinc-400">
+              {uploaded} {uploaded === 1 ? "file" : "files"} uploaded successfully.
+            </p>
+            <p className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-bold text-[#d7ff3f]">
+              {formatBytes(totals.uploadedBytes)} uploaded
+            </p>
+            <p className="mt-4 max-w-md text-sm leading-6 text-zinc-500">
+              Files are ready and preview cache will continue in the background.
+            </p>
+            <p className="mt-4 text-xs text-zinc-600">Closing automatically...</p>
 
-          <div className="mt-4 flex flex-wrap justify-center gap-2">
-            <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black">
-              <File className="h-4 w-4" />
-              Browse files
-              <input
-                type="file"
-                multiple
-                className="hidden"
-                disabled={uploading}
-                onChange={(event) => {
-                  onAddFiles(event.target.files, false);
-                  event.currentTarget.value = "";
+            <div className="mt-7 flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  onClear();
+                  setClosing(false);
                 }}
-              />
-            </label>
-
-            <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10">
-              <Folder className="h-4 w-4" />
-              Browse folder
-              <input
-                type="file"
-                multiple
-                className="hidden"
-                disabled={uploading}
-                {...{ webkitdirectory: "", directory: "" }}
-                onChange={(event) => {
-                  onAddFiles(event.target.files, true);
-                  event.currentTarget.value = "";
-                }}
-              />
-            </label>
+                className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10"
+              >
+                Upload more
+              </button>
+              <button
+                type="button"
+                onClick={beginClose}
+                className="rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black hover:bg-[#c8ef34]"
+              >
+                View files
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <>
+            <div
+              onDragEnter={(event) => {
+                event.preventDefault();
+                setDragActive(true);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDragActive(true);
+              }}
+              onDragLeave={(event) => {
+                event.preventDefault();
+                setDragActive(false);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                setDragActive(false);
+                if (uploading) return;
+                onDropFiles(event.dataTransfer);
+              }}
+              className={`mt-5 rounded-3xl border border-dashed p-6 text-center transition ${
+                dragActive ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/15 bg-black/20"
+              }`}
+            >
+              <Upload className="mx-auto h-8 w-8 text-[#d7ff3f]" />
+              <p className="mt-3 font-black text-white">Drag and drop files or folders</p>
+              <p className="mt-1 text-sm text-zinc-500">Folder paths are preserved when your browser provides them.</p>
 
-        {total ? (
-          <div className="mt-5 rounded-3xl border border-white/10 bg-black/20 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-black text-white">{uploaded} / {total} uploaded</p>
-                <p className="mt-1 text-xs text-zinc-500">{formatBytes(totals.uploadedBytes)} / {formatBytes(totals.totalBytes)}</p>
-              </div>
-              <span className="text-sm font-black text-[#d7ff3f]">{percent}%</span>
-            </div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full rounded-full bg-[#d7ff3f] transition-all" style={{ width: `${percent}%` }} />
-            </div>
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black">
+                  <File className="h-4 w-4" />
+                  Browse files
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    disabled={uploading}
+                    onChange={(event) => {
+                      onAddFiles(event.target.files, false);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
 
-            <div className="mt-4 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
-              <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2">
-                <span className="text-zinc-500">Speed: </span>
-                <span className="font-bold text-white">{formatSpeed(totals.totalSpeedBytesPerSecond)}</span>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2">
-                <span className="text-zinc-500">ETA: </span>
-                <span className="font-bold text-white">{formatDuration(totals.totalEtaSeconds)}</span>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2 sm:col-span-2">
-                <span className="text-zinc-500">Current: </span>
-                <span className="font-bold text-white">{currentLabel}</span>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2">
-                <span className="text-zinc-500">Active: </span>
-                <span className="font-bold text-white">{totals.activeFiles}</span>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2">
-                <span className="text-zinc-500">Failed: </span>
-                <span className={failed ? "font-bold text-red-100" : "font-bold text-white"}>{failed}</span>
+                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10">
+                  <Folder className="h-4 w-4" />
+                  Browse folder
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    disabled={uploading}
+                    {...{ webkitdirectory: "", directory: "" }}
+                    onChange={(event) => {
+                      onAddFiles(event.target.files, true);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
               </div>
             </div>
 
-            <div className="mt-4 max-h-56 space-y-2 overflow-auto pr-1">
-              {visibleSelections.map((item) => (
-                <div key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-white">{item.relativePath || item.name}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
-                      <span>{formatBytes(item.uploadedBytes)} / {formatBytes(item.totalBytes)}</span>
-                      {item.status === "uploading" || item.status === "finalizing" || item.status === "verifying" ? <span>{Math.round(item.percent)}%</span> : null}
-                      {item.status === "uploading" || item.status === "finalizing" || item.status === "verifying" ? <span>{formatSpeed(item.speedBytesPerSecond)}</span> : null}
-                    </div>
-                    {item.progressMessage ? <p className="mt-1 text-xs text-zinc-400">{item.progressMessage}</p> : null}
-                    {item.status === "uploading" || item.status === "finalizing" || item.status === "verifying" ? (
-                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-                        <div className="h-full rounded-full bg-blue-300 transition-all" style={{ width: `${Math.min(item.percent, 99)}%` }} />
+            {total ? (
+              <div className="mt-5 rounded-3xl border border-white/10 bg-black/20 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-white">{uploaded} / {total} uploaded</p>
+                    <p className="mt-1 text-xs text-zinc-500">{formatBytes(totals.uploadedBytes)} / {formatBytes(totals.totalBytes)}</p>
+                  </div>
+                  <span className="text-sm font-black text-[#d7ff3f]">{percent}%</span>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+                  <div className="h-full rounded-full bg-[#d7ff3f] transition-all" style={{ width: `${percent}%` }} />
+                </div>
+
+                <div className="mt-4 grid gap-2 text-xs text-zinc-300 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2">
+                    <span className="text-zinc-500">Speed: </span>
+                    <span className="font-bold text-white">{formatSpeed(totals.totalSpeedBytesPerSecond)}</span>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2">
+                    <span className="text-zinc-500">ETA: </span>
+                    <span className="font-bold text-white">{formatDuration(totals.totalEtaSeconds)}</span>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2 sm:col-span-2">
+                    <span className="text-zinc-500">Current: </span>
+                    <span className="font-bold text-white">{currentLabel}</span>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2">
+                    <span className="text-zinc-500">Active: </span>
+                    <span className="font-bold text-white">{totals.activeFiles}</span>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2">
+                    <span className="text-zinc-500">Failed: </span>
+                    <span className={failed ? "font-bold text-red-100" : "font-bold text-white"}>{failed}</span>
+                  </div>
+                </div>
+
+                <div className="mt-4 max-h-56 space-y-2 overflow-auto pr-1">
+                  {visibleSelections.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-white">{item.relativePath || item.name}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
+                          <span>{formatBytes(item.uploadedBytes)} / {formatBytes(item.totalBytes)}</span>
+                          {item.status === "uploading" || item.status === "finalizing" || item.status === "verifying" ? <span>{Math.round(item.percent)}%</span> : null}
+                          {item.status === "uploading" || item.status === "finalizing" || item.status === "verifying" ? <span>{formatSpeed(item.speedBytesPerSecond)}</span> : null}
+                        </div>
+                        {item.progressMessage ? <p className="mt-1 text-xs text-zinc-400">{item.progressMessage}</p> : null}
+                        {item.status === "uploading" || item.status === "finalizing" || item.status === "verifying" ? (
+                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                            <div className="h-full rounded-full bg-blue-300 transition-all" style={{ width: `${Math.min(item.percent, 99)}%` }} />
+                          </div>
+                        ) : null}
+                        {item.errorMessage ? <p className="mt-1 text-xs text-red-200">{item.errorMessage}</p> : null}
                       </div>
-                    ) : null}
-                    {item.errorMessage ? <p className="mt-1 text-xs text-red-200">{item.errorMessage}</p> : null}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {item.status === "uploaded" ? <CheckSquare className="h-4 w-4 text-[#d7ff3f]" /> : null}
-                    <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${statusClass(item.status)}`}>
-                      {statusLabel(item)}
-                    </span>
-                    {!uploading && item.status !== "uploaded" ? (
-                      <button type="button" onClick={() => onRemove(item.id)} className="rounded-lg p-1 text-zinc-500 hover:bg-white/10 hover:text-white" aria-label={`Remove ${item.name}`}>
-                        <X className="h-4 w-4" />
-                      </button>
-                    ) : null}
-                  </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {item.status === "uploaded" ? <CheckSquare className="h-4 w-4 text-[#d7ff3f]" /> : null}
+                        <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${statusClass(item.status)}`}>
+                          {statusLabel(item)}
+                        </span>
+                        {!uploading && item.status !== "uploaded" ? (
+                          <button type="button" onClick={() => onRemove(item.id)} className="rounded-lg p-1 text-zinc-500 hover:bg-white/10 hover:text-white" aria-label={`Remove ${item.name}`}>
+                            <X className="h-4 w-4" />
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                  {hiddenSelections ? (
+                    <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2 text-xs text-zinc-500">
+                      {hiddenSelections} more files hidden for performance.
+                    </div>
+                  ) : null}
                 </div>
-              ))}
-              {hiddenSelections ? (
-                <div className="rounded-2xl border border-white/10 bg-[#08090d] px-3 py-2 text-xs text-zinc-500">
-                  {hiddenSelections} more files hidden for performance.
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
+              </div>
+            ) : null}
 
-        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button type="button" onClick={onClear} disabled={uploading || !total} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:opacity-50">
-            Clear selected files
-          </button>
-          <button type="button" onClick={onClose} disabled={uploading} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50">
-            {uploading ? "Upload in progress" : "Close"}
-          </button>
-          <button type="button" onClick={onUpload} disabled={uploading || !uploadableCount} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60">
-            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            {retryOnly && !uploading ? "Retry failed" : uploading ? "Uploading..." : failed && !uploading ? "Upload pending and failed" : "Upload selected files"}
-          </button>
-        </div>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" onClick={onClear} disabled={uploading || !total} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:opacity-50">
+                Clear selected files
+              </button>
+              <button type="button" onClick={beginClose} disabled={uploading} className="rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50">
+                {uploading ? "Upload in progress" : "Close"}
+              </button>
+              <button type="button" onClick={onUpload} disabled={uploading || !uploadableCount} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60">
+                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {retryOnly && !uploading ? "Retry failed" : uploading ? "Uploading..." : failed && !uploading ? "Upload pending and failed" : "Upload selected files"}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
