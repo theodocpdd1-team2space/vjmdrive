@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { HardDrive, Mail, Shield, User } from "lucide-react";
 import { findUserById, getCurrentUser, userStoragePath } from "@/lib/auth";
 import { directorySize, storageSummary } from "@/lib/storage";
+import { planQuotaLabel } from "@/lib/plan-display";
 import { UserShell } from "@/components/layout/user-shell";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ export default async function AccountPage() {
 
   const usedBytes = await directorySize(userStoragePath(user.id));
   const storage = storageSummary(usedBytes, user.quotaBytes);
+  const planLabel = planQuotaLabel(user.plan, user.quotaBytes);
 
   return (
     <UserShell title="Account" subtitle="Your driveOne account and storage summary.">
@@ -36,7 +38,7 @@ export default async function AccountPage() {
         <div className="grid gap-3 md:grid-cols-3">
           <Info icon={Mail} label="Email" value={user.email} />
           <Info icon={Shield} label="Role" value={user.role} />
-          <Info icon={HardDrive} label="Plan" value={user.plan || "Free"} />
+          <Info icon={HardDrive} label="Plan" value={planLabel} />
         </div>
 
         <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-5 shadow-2xl shadow-black/20">

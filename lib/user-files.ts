@@ -161,3 +161,34 @@ export async function deleteUserItem(user: DriveUser, itemPath: string, type: "f
   const deleted = await softDelete([fullPath]);
   return deleted.map((item) => path.posix.relative(root, item));
 }
+
+export async function deleteUserItems(user: DriveUser, itemPaths: string[]) {
+  const deleted: string[] = [];
+  const failed: Array<{ path: string; message: string }> = [];
+
+  for (const itemPath of Array.from(new Set(itemPaths))) {
+    try {
+      const root = userStorageRelativePath(user.id);
+      const relative = normalizeDrivePath(itemPath);
+
+      if (!relative) throw new Error("Cannot delete drive root");
+
+      const fullPath = path.posix.join(root, relative);
+      if (!isDriveSubPath(root, fullPath)) throw new Error("Invalid path");
+
+      const existing = await resolveExisting(fullPath);
+      const stat = await fs.stat(existing.absolutePath);
+      if (!stat.isFile() && !stat.isDirectory()) throw new Error("Selected item is not a file or folder");
+
+      const removed = await softDelete([fullPath]);
+      deleted.push(...removed.map((item) => path.posix.relative(root, item)));
+    } catch (caught) {
+      failed.push({
+        path: itemPath,
+        message: caught instanceof Error ? caught.message : "Delete failed.",
+      });
+    }
+  }
+
+  return { deleted, failed };
+}

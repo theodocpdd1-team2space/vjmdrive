@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { FormEvent } from "react";
+import type { FormEvent, KeyboardEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
@@ -42,6 +42,7 @@ import {
   ViewToggle,
   typeLabel,
 } from "@/components/drive/drive-ui";
+import { planQuotaLabel } from "@/lib/plan-display";
 
 type ShareResult = {
   url: string;
@@ -77,6 +78,14 @@ type UploadProgress = {
   speedBytesPerSecond: number;
   etaSeconds: number | null;
   status?: UploadStatus;
+};
+
+type DrivePlanSummary = {
+  plan: string;
+  quotaBytes: number | null;
+  storageUsedBytes: number;
+  storagePercent: number;
+  planLabel: string;
 };
 
 type UploadApiResponse = {
@@ -621,7 +630,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [shareTarget, setShareTarget] = useState<DriveItem | null>(null);
   const [shareResult, setShareResult] = useState<ShareResult | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<DriveItem | null>(null);
+  const [deleteTargets, setDeleteTargets] = useState<DriveItem[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [previewItem, setPreviewItem] = useState<DriveItem | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -629,6 +638,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
   const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
+  const [planSummary, setPlanSummary] = useState<DrivePlanSummary | null>(null);
   const uploadProgressClockRef = useRef<Record<string, number>>({});
 
   const load = useCallback(async (nextPath: string) => {
@@ -646,6 +656,16 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
       setItems(data.items || []);
       setPath(data.path || "");
       setSelectedPaths(new Set());
+      if ("plan" in data || "planLabel" in data) {
+        setPlanSummary({
+          plan: typeof data.plan === "string" ? data.plan : "Free",
+          quotaBytes: typeof data.quotaBytes === "number" || data.quotaBytes === null ? data.quotaBytes : null,
+          storageUsedBytes: typeof data.storageUsedBytes === "number" ? data.storageUsedBytes : 0,
+          storagePercent: typeof data.storagePercent === "number" ? data.storagePercent : 0,
+          planLabel:
+            typeof data.planLabel === "string" ? data.planLabel : planQuotaLabel(data.plan, data.quotaBytes),
+        });
+      }
       return;
     }
 
@@ -868,8 +888,8 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
     window.location.href = "/";
   }
 
-  async function deleteItem() {
-    if (!deleteTarget || deleting) return;
+  async function deleteItems() {
+    if (!deleteTargets.length || deleting) return;
 
     setDeleting(true);
     setNotice("");
@@ -877,10 +897,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
     const res = await fetch("/api/user/files/delete", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        path: deleteTarget.path,
-        type: deleteTarget.type === "folder" ? "folder" : "file",
-      }),
+      body: JSON.stringify({ paths: deleteTargets.map((item) => item.path) }),
     });
     const data = await res.json().catch(() => ({}));
     setDeleting(false);
@@ -890,8 +907,11 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
       return;
     }
 
-    setDeleteTarget(null);
-    setNotice("Deleted.");
+    const deletedCount = Array.isArray(data.deleted) ? data.deleted.length : 0;
+    const failedCount = Array.isArray(data.failed) ? data.failed.length : 0;
+    setDeleteTargets([]);
+    setSelectedPaths(new Set());
+    setNotice(failedCount ? `Deleted ${deletedCount}. ${failedCount} failed.` : `Deleted ${deletedCount || deleteTargets.length} selected item${deleteTargets.length === 1 ? "" : "s"}.`);
     await load(path);
   }
 
@@ -899,6 +919,28 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
     const timer = window.setTimeout(() => void load(""), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadPlanSummary() {
+      const res = await fetch("/api/auth/me", { cache: "no-store" }).catch(() => null);
+      const data = res ? await res.json().catch(() => ({})) : {};
+      const user = data?.user;
+      if (!active || !user) return;
+      setPlanSummary({
+        plan: typeof user.plan === "string" ? user.plan : "Free",
+        quotaBytes: typeof user.quotaBytes === "number" || user.quotaBytes === null ? user.quotaBytes : null,
+        storageUsedBytes: typeof user.storageUsedBytes === "number" ? user.storageUsedBytes : 0,
+        storagePercent: typeof user.storagePercent === "number" ? user.storagePercent : 0,
+        planLabel:
+          typeof user.planLabel === "string" ? user.planLabel : planQuotaLabel(user.plan, user.quotaBytes),
+      });
+    }
+    void loadPlanSummary();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!notice) return;
@@ -914,7 +956,24 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
     return items.filter((item) => item.name.toLowerCase().includes(keyword));
   }, [items, query]);
 
+  const selectedItems = useMemo(
+    () => items.filter((item) => selectedPaths.has(item.path)),
+    [items, selectedPaths]
+  );
+
   const usedBytesDisplayed = filteredItems.reduce((total, item) => total + (item.type === "folder" ? 0 : item.bytes || 0), 0);
+  const drivePlanLabel = planSummary?.planLabel || "Drive plan";
+  const drivePlanTitle = planSummary?.plan ? `${planSummary.plan} Plan` : "Drive Plan";
+  const driveQuotaText =
+    planSummary?.quotaBytes === null
+      ? "Unlimited storage quota"
+      : planSummary
+        ? `${formatBytes(planSummary.quotaBytes)} storage quota`
+        : "Storage quota";
+  const driveUsageText = planSummary
+    ? `${formatBytes(planSummary.storageUsedBytes)} used${planSummary.quotaBytes === null ? "" : ` of ${formatBytes(planSummary.quotaBytes)}`}`
+    : "Storage usage loading";
+  const driveUsagePercent = Math.max(0, Math.min(100, planSummary?.storagePercent || 0));
 
   if (embedded) {
     return (
@@ -971,7 +1030,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
               </nav>
               <div className="flex items-center gap-2 text-xs text-zinc-500">
                 <span className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">Login protected</span>
-                <span className="rounded-xl border border-[#d7ff3f]/20 bg-[#d7ff3f]/10 px-3 py-2 text-[#d7ff3f]">1 GB Free</span>
+                <span className="rounded-xl border border-[#d7ff3f]/20 bg-[#d7ff3f]/10 px-3 py-2 text-[#d7ff3f]">{drivePlanLabel}</span>
               </div>
             </div>
           </section>
@@ -996,6 +1055,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
             }}
             onSelectAll={selectAllVisible}
             onClear={clearSelection}
+            onDeleteSelected={() => setDeleteTargets(selectedItems)}
           />
 
           <FileList
@@ -1010,7 +1070,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
               setShareTarget(item);
               setShareResult(null);
             }}
-            setDeleteTarget={setDeleteTarget}
+            setDeleteTarget={(item) => setDeleteTargets([item])}
           />
         </div>
 
@@ -1058,12 +1118,12 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
         />
 
         <DeleteConfirmModal
-          item={deleteTarget}
+          items={deleteTargets}
           deleting={deleting}
           onClose={() => {
-            if (!deleting) setDeleteTarget(null);
+            if (!deleting) setDeleteTargets([]);
           }}
-          onConfirm={() => void deleteItem()}
+          onConfirm={() => void deleteItems()}
         />
 
         <NewFolderModal
@@ -1150,14 +1210,14 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
         <div className="mt-auto space-y-3">
           <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-4">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-bold text-white">Free Plan</p>
+              <p className="text-sm font-bold text-white">{drivePlanTitle}</p>
               <BarChart3 className="h-4 w-4 text-[#d7ff3f]" />
             </div>
-            <p className="mt-1 text-xs text-zinc-500">Default storage quota: 1 GB</p>
+            <p className="mt-1 text-xs text-zinc-500">{driveQuotaText}</p>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full w-[8%] rounded-full bg-[#d7ff3f]" />
+              <div className="h-full rounded-full bg-[#d7ff3f]" style={{ width: `${driveUsagePercent}%` }} />
             </div>
-            <p className="mt-2 text-xs text-zinc-500">Upgrade plans coming soon.</p>
+            <p className="mt-2 text-xs text-zinc-500">{driveUsageText}</p>
           </div>
 
           <button
@@ -1247,7 +1307,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
                     Login protected
                   </span>
                   <span className="rounded-xl border border-[#d7ff3f]/20 bg-[#d7ff3f]/10 px-3 py-2 text-[#d7ff3f]">
-                    1 GB Free
+                    {drivePlanLabel}
                   </span>
                 </div>
               </div>
@@ -1273,103 +1333,23 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
               }}
               onSelectAll={selectAllVisible}
               onClear={clearSelection}
+              onDeleteSelected={() => setDeleteTargets(selectedItems)}
             />
 
-            <section className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/20">
-              <div className="border-b border-white/10 p-3">
-                <div>
-                  <p className="text-sm font-black text-white">Files</p>
-                  <p className="mt-1 text-xs text-zinc-500">Open, preview, download, or share your own files.</p>
-                </div>
-              </div>
-              {loading ? (
-                <div className="flex h-72 items-center justify-center gap-2 text-zinc-400">
-                  <Loader2 className="h-5 w-5 animate-spin text-[#d7ff3f]" />
-                  Loading drive...
-                </div>
-              ) : null}
-
-              {!loading && filteredItems.length === 0 ? (
-                <div className="flex h-72 flex-col items-center justify-center gap-3 p-8 text-center">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-3xl border border-white/10 bg-white/[0.04] text-[#d7ff3f]">
-                    <HardDrive className="h-7 w-7" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-white">No files here</p>
-                    <p className="mt-1 text-sm text-zinc-500">Upload your first file to this folder.</p>
-                  </div>
-                </div>
-              ) : null}
-
-              {!loading && filteredItems.length > 0 ? (
-                <div className={viewMode === "grid" ? "grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3" : "divide-y divide-white/10"}>
-                  {filteredItems.map((item) => (
-                    <div
-                      key={item.path}
-                      className={viewMode === "grid"
-                        ? "rounded-3xl border border-white/10 bg-black/20 p-3 transition hover:bg-white/[0.05]"
-                        : "grid w-full grid-cols-[42px_minmax(0,1fr)] items-center gap-3 px-4 py-3 text-left transition hover:bg-white/[0.04] md:grid-cols-[42px_minmax(0,1fr)_120px_120px_250px]"}
-                    >
-                      <FileThumbnail item={item} size={viewMode === "grid" ? "grid" : "row"} />
-
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-white">{item.name}</p>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-                          <span>{typeLabel(item)}</span>
-                          <PreviewStatusBadge item={item} />
-                        </div>
-                      </div>
-
-                      <span className={viewMode === "grid" ? "mt-3 block text-xs text-zinc-500" : "hidden text-xs text-zinc-500 md:block"}>
-                        {item.size || formatBytes(item.bytes || 0)}
-                      </span>
-
-                      <span className={viewMode === "grid" ? "mt-3 block text-xs text-zinc-600" : "hidden text-xs text-zinc-600 md:block"}>
-                        {new Date(item.modified).toLocaleString("id-ID")}
-                      </span>
-
-                      <div className={viewMode === "grid" ? "mt-4 flex flex-wrap gap-2" : "col-span-2 flex flex-wrap gap-2 md:col-span-1 md:justify-end"}>
-                        <button
-                          onClick={() => (item.type === "folder" ? void load(item.path) : setPreviewItem(item))}
-                          className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
-                        >
-                          {item.type === "folder" ? <Folder className="h-4 w-4" /> : <File className="h-4 w-4" />}
-                          {item.type === "folder" ? "Open" : "Preview"}
-                        </button>
-                        {item.type === "folder" ? (
-                          <a href={`/api/user/files/zip?path=${encodeURIComponent(item.path)}`} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white">
-                            <Download className="h-4 w-4" />
-                            Download
-                          </a>
-                        ) : item.directDownloadUrl ? (
-                          <a href={item.directDownloadUrl} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white">
-                            <Download className="h-4 w-4" />
-                            Download
-                          </a>
-                        ) : null}
-                        <button
-                          onClick={() => {
-                            setShareTarget(item);
-                            setShareResult(null);
-                          }}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#d7ff3f] px-3 py-2 text-xs font-black text-black hover:bg-[#c8ef34]"
-                        >
-                          <Share2 className="h-4 w-4" />
-                          Share
-                        </button>
-                        <button
-                          onClick={() => setDeleteTarget(item)}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-300/20 px-3 py-2 text-xs font-bold text-red-100 hover:bg-red-300/10"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </section>
+            <FileList
+              loading={loading}
+              filteredItems={filteredItems}
+              selectedPaths={selectedPaths}
+              viewMode={viewMode}
+              load={load}
+              setPreviewItem={setPreviewItem}
+              toggleSelect={toggleSelect}
+              setShareTarget={(item) => {
+                setShareTarget(item);
+                setShareResult(null);
+              }}
+              setDeleteTarget={(item) => setDeleteTargets([item])}
+            />
           </div>
         </div>
       </section>
@@ -1418,12 +1398,12 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
       />
 
       <DeleteConfirmModal
-        item={deleteTarget}
+        items={deleteTargets}
         deleting={deleting}
         onClose={() => {
-          if (!deleting) setDeleteTarget(null);
+          if (!deleting) setDeleteTargets([]);
         }}
-        onConfirm={() => void deleteItem()}
+        onConfirm={() => void deleteItems()}
       />
 
       <NewFolderModal
@@ -1451,6 +1431,7 @@ function UserDriveToolbar({
   onShareCurrent,
   onSelectAll,
   onClear,
+  onDeleteSelected,
 }: {
   selectedCount: number;
   visibleCount: number;
@@ -1462,6 +1443,7 @@ function UserDriveToolbar({
   onShareCurrent: () => void;
   onSelectAll: () => void;
   onClear: () => void;
+  onDeleteSelected: () => void;
 }) {
   return (
     <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-3 shadow-2xl shadow-black/10">
@@ -1515,6 +1497,16 @@ function UserDriveToolbar({
             <Square className="h-4 w-4" />
             Clear
           </button>
+          {selectedCount ? (
+            <button
+              type="button"
+              onClick={onDeleteSelected}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-300/25 bg-red-400/10 px-3 py-2 text-sm font-bold text-red-100 transition hover:bg-red-400/20"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete selected
+            </button>
+          ) : null}
           <span className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold text-zinc-500">
             {selectedCount ? `${selectedCount} selected` : `${visibleCount} visible`}
           </span>
@@ -1546,6 +1538,22 @@ function FileList({
   setShareTarget: (item: DriveItem) => void;
   setDeleteTarget: (item: DriveItem) => void;
 }) {
+  function openItem(item: DriveItem) {
+    if (item.type === "folder") {
+      void load(item.path);
+      return;
+    }
+    if (item.canPreview) setPreviewItem(item);
+  }
+
+  function handleItemKeyDown(event: KeyboardEvent<HTMLDivElement>, item: DriveItem) {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("button,a,input")) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    openItem(item);
+  }
+
   return (
     <section className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/20">
       <div className="border-b border-white/10 p-3">
@@ -1578,9 +1586,15 @@ function FileList({
           {filteredItems.map((item) => (
             <div
               key={item.path}
+              role="button"
+              tabIndex={0}
+              title={item.type === "folder" ? `Open ${item.name}` : item.canPreview ? `Preview ${item.name}` : item.name}
+              aria-label={item.type === "folder" ? `Open folder ${item.name}` : item.canPreview ? `Preview file ${item.name}` : `File ${item.name}`}
+              onClick={() => openItem(item)}
+              onKeyDown={(event) => handleItemKeyDown(event, item)}
               className={viewMode === "grid"
-                ? `rounded-3xl border p-3 transition hover:bg-white/[0.05] ${selectedPaths.has(item.path) ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`
-                : `grid w-full grid-cols-[42px_42px_minmax(0,1fr)] items-center gap-3 px-4 py-3 text-left transition hover:bg-white/[0.04] md:grid-cols-[42px_42px_minmax(0,1fr)_120px_120px_250px] ${selectedPaths.has(item.path) ? "bg-[#d7ff3f]/10" : ""}`}
+                ? `cursor-pointer rounded-3xl border p-3 transition hover:bg-white/[0.05] focus:outline-none focus:ring-2 focus:ring-[#d7ff3f]/60 ${selectedPaths.has(item.path) ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`
+                : `grid w-full cursor-pointer grid-cols-[42px_42px_minmax(0,1fr)] items-center gap-3 px-4 py-3 text-left transition hover:bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#d7ff3f]/60 md:grid-cols-[42px_42px_minmax(0,1fr)_120px_120px_220px] ${selectedPaths.has(item.path) ? "bg-[#d7ff3f]/10" : ""}`}
             >
               <SelectionCheckbox checked={selectedPaths.has(item.path)} onClick={() => toggleSelect(item.path)} />
               <FileThumbnail item={item} size={viewMode === "grid" ? "grid" : "row"} />
@@ -1602,33 +1616,40 @@ function FileList({
               </span>
 
               <div className={viewMode === "grid" ? "mt-4 flex flex-wrap gap-2" : "col-span-2 flex flex-wrap gap-2 md:col-span-1 md:justify-end"}>
-                <button
-                  onClick={() => (item.type === "folder" ? void load(item.path) : setPreviewItem(item))}
-                  className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
-                >
-                  {item.type === "folder" ? <Folder className="h-4 w-4" /> : <File className="h-4 w-4" />}
-                  {item.type === "folder" ? "Open" : "Preview"}
-                </button>
                 {item.type === "folder" ? (
-                  <a href={`/api/user/files/zip?path=${encodeURIComponent(item.path)}`} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white">
+                  <a
+                    href={`/api/user/files/zip?path=${encodeURIComponent(item.path)}`}
+                    onClick={(event) => event.stopPropagation()}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
+                  >
                     <Download className="h-4 w-4" />
                     Download
                   </a>
                 ) : item.directDownloadUrl ? (
-                  <a href={item.directDownloadUrl} className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white">
+                  <a
+                    href={item.directDownloadUrl}
+                    onClick={(event) => event.stopPropagation()}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
+                  >
                     <Download className="h-4 w-4" />
                     Download
                   </a>
                 ) : null}
                 <button
-                  onClick={() => setShareTarget(item)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setShareTarget(item);
+                  }}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#d7ff3f] px-3 py-2 text-xs font-black text-black hover:bg-[#c8ef34]"
                 >
                   <Share2 className="h-4 w-4" />
                   Share
                 </button>
                 <button
-                  onClick={() => setDeleteTarget(item)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setDeleteTarget(item);
+                  }}
                   className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-300/20 px-3 py-2 text-xs font-bold text-red-100 hover:bg-red-300/10"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -1976,17 +1997,20 @@ function UploadModal({
 }
 
 function DeleteConfirmModal({
-  item,
+  items,
   deleting,
   onClose,
   onConfirm,
 }: {
-  item: DriveItem | null;
+  items: DriveItem[];
   deleting: boolean;
   onClose: () => void;
   onConfirm: () => void;
 }) {
-  if (!item) return null;
+  if (!items.length) return null;
+
+  const hasFolders = items.some((item) => item.type === "folder");
+  const title = items.length === 1 ? items[0].name : `Delete ${items.length} selected items?`;
 
   return (
     <div className="fixed inset-0 z-[110] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4">
@@ -1994,10 +2018,15 @@ function DeleteConfirmModal({
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-red-200">Confirm delete</p>
-            <h2 className="mt-2 text-xl font-black text-white">{item.name}</h2>
+            <h2 className="mt-2 text-xl font-black text-white">{title}</h2>
             <p className="mt-1 text-sm text-zinc-500">
-              This will remove the selected {item.type === "folder" ? "folder and its contents" : "file"} from your drive.
+              {items.length === 1
+                ? `This will remove the selected ${items[0].type === "folder" ? "folder and its contents" : "file"} from your drive.`
+                : "This will remove selected files/folders from your drive."}
             </p>
+            {items.length > 1 && hasFolders ? (
+              <p className="mt-2 text-sm font-medium text-red-100">Folders and their contents will also be removed.</p>
+            ) : null}
           </div>
           <button onClick={onClose} disabled={deleting} className="rounded-xl p-2 text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-50" aria-label="Close delete confirmation">
             <X className="h-5 w-5" />
@@ -2010,7 +2039,7 @@ function DeleteConfirmModal({
           </button>
           <button type="button" onClick={onConfirm} disabled={deleting} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-red-400 px-4 py-3 text-sm font-black text-black disabled:opacity-60">
             {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-            {deleting ? "Deleting..." : "Delete"}
+            {deleting ? "Deleting..." : items.length === 1 ? "Delete" : "Delete selected"}
           </button>
         </div>
       </div>

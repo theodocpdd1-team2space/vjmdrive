@@ -6,6 +6,7 @@ import { getBeautySharesByOwner } from "@/lib/beauty-share-db";
 import { listDriveFolder } from "@/lib/drive-list";
 import { readShareLinks } from "@/lib/share-db";
 import { directorySize, storageSummary } from "@/lib/storage";
+import { planQuotaLabel } from "@/lib/plan-display";
 import { UserShell } from "@/components/layout/user-shell";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +43,7 @@ export default async function DashboardPage() {
   ]);
 
   const storage = storageSummary(usedBytes, user.quotaBytes);
+  const planLabel = planQuotaLabel(user.plan, user.quotaBytes);
   const now = Date.now();
   const userEmail = normalizeEmail(user.email);
 
@@ -105,7 +107,7 @@ export default async function DashboardPage() {
           </div>
 
           <p className="mt-3 text-xs text-zinc-500">
-            Plan: <span className="font-bold text-white">{user.plan || "Free"}</span>
+            Plan: <span className="font-bold text-white">{planLabel}</span>
           </p>
         </section>
 
@@ -181,7 +183,7 @@ export default async function DashboardPage() {
           <div className="mt-3 grid gap-3 text-sm md:grid-cols-3">
             <Info label="Email" value={user.email} />
             <Info label="Role" value={user.role} />
-            <Info label="Plan" value={user.plan || "Free"} />
+            <Info label="Plan" value={planLabel} />
           </div>
         </section>
       </div>
