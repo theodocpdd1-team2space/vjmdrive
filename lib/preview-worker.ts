@@ -37,19 +37,28 @@ function runFfmpeg(args: string[]) {
 }
 
 async function generateThumbnail(inputPath: string, outputPath: string) {
+  await fs.mkdir(path.dirname(outputPath), { recursive: true });
   const tempPath = `${outputPath}.tmp-${process.pid}-${Date.now()}.jpg`;
   await removeIfExists(tempPath);
+  await fs.mkdir(path.dirname(tempPath), { recursive: true });
   const isImage = ["jpg", "jpeg", "png", "webp", "gif"].includes(path.extname(inputPath).replace(/^\./, "").toLowerCase());
   const args = isImage
     ? ["-y", "-i", inputPath, "-frames:v", "1", "-q:v", "3", tempPath]
     : ["-y", "-ss", "00:00:05", "-i", inputPath, "-frames:v", "1", "-q:v", "3", tempPath];
   await runFfmpeg(args);
+  const tempStat = await fs.stat(tempPath).catch(() => null);
+  if (!tempStat?.isFile()) throw new Error("Thumbnail generation failed: temp file was not created");
+  await fs.mkdir(path.dirname(outputPath), { recursive: true });
   await fs.rename(tempPath, outputPath);
+  const outputStat = await fs.stat(outputPath).catch(() => null);
+  if (!outputStat?.isFile()) throw new Error("Thumbnail generation failed: output file was not created");
 }
 
 async function generatePreview(inputPath: string, outputPath: string) {
+  await fs.mkdir(path.dirname(outputPath), { recursive: true });
   const tempPath = `${outputPath}.tmp-${process.pid}-${Date.now()}.mp4`;
   await removeIfExists(tempPath);
+  await fs.mkdir(path.dirname(tempPath), { recursive: true });
   await runFfmpeg([
     "-y",
     "-ss",
@@ -71,7 +80,12 @@ async function generatePreview(inputPath: string, outputPath: string) {
     "-an",
     tempPath,
   ]);
+  const tempStat = await fs.stat(tempPath).catch(() => null);
+  if (!tempStat?.isFile()) throw new Error("Preview generation failed: temp file was not created");
+  await fs.mkdir(path.dirname(outputPath), { recursive: true });
   await fs.rename(tempPath, outputPath);
+  const outputStat = await fs.stat(outputPath).catch(() => null);
+  if (!outputStat?.isFile()) throw new Error("Preview generation failed: output file was not created");
 }
 
 export async function processPreviewForPath(relativePath: string) {

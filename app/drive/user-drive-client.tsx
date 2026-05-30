@@ -51,7 +51,7 @@ type ShareResult = {
   failedEmails: string[];
 };
 
-type UploadStatus = "pending" | "queued" | "uploading" | "uploaded" | "failed";
+type UploadStatus = "pending" | "uploading" | "finalizing" | "verifying" | "uploaded" | "failed";
 
 type UploadSelection = {
   id: string;
@@ -75,11 +75,13 @@ type UploadProgress = {
   percent: number;
   speedBytesPerSecond: number;
   etaSeconds: number | null;
+  status?: UploadStatus;
 };
 
 type UploadApiResponse = {
   ok?: boolean;
   message?: string;
+  error?: string;
   uploaded?: string[];
   [key: string]: unknown;
 };
@@ -88,6 +90,11 @@ type ChunkInitResponse = UploadApiResponse & {
   uploadId?: string;
   chunkSize?: number;
   totalChunks?: number;
+};
+
+type DriveListResponse = {
+  ok?: boolean;
+  items?: DriveItem[];
 };
 
 type UploadTotals = {
@@ -125,6 +132,7 @@ type DataTransferItemWithEntry = DataTransferItem & {
 
 const CHUNK_UPLOAD_THRESHOLD = 80 * 1024 * 1024;
 const CHUNK_SIZE = 10 * 1024 * 1024;
+const UPLOAD_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
 function uploadId(file: File, relativePath: string) {
   return `${relativePath || file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`;
@@ -273,6 +281,7 @@ function uploadChunkRequest({
     form.append("chunk", chunk, `chunk-${chunkIndex}.part`);
 
     const xhr = new XMLHttpRequest();
+    xhr.timeout = UPLOAD_REQUEST_TIMEOUT_MS;
     xhr.upload.onprogress = (event) => {
       onProgress(Math.min(event.loaded, chunk.size));
     };
@@ -292,21 +301,40 @@ function uploadChunkRequest({
       reject(new Error(data.message || `Chunk ${chunkIndex + 1} upload failed.`));
     };
     xhr.onerror = () => reject(new Error(`Network error while uploading chunk ${chunkIndex + 1}.`));
+    xhr.ontimeout = () => reject(new Error(`Timed out while uploading chunk ${chunkIndex + 1}.`));
     xhr.onabort = () => reject(new Error(`Chunk ${chunkIndex + 1} upload canceled.`));
     xhr.open("POST", "/api/files/upload/chunk");
     xhr.send(form);
   });
 }
 
-async function postUploadJson<T extends UploadApiResponse>(url: string, body: Record<string, unknown>, fallbackMessage: string) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = (await res.json().catch(() => ({}))) as T;
-  if (!res.ok || !data.ok) throw new Error(data.message || fallbackMessage);
-  return data;
+async function postUploadJson<T extends UploadApiResponse>(
+  url: string,
+  body: Record<string, unknown>,
+  fallbackMessage: string,
+  timeoutMs = UPLOAD_REQUEST_TIMEOUT_MS
+) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const data = (await res.json().catch(() => ({}))) as T;
+    if (!res.ok || !data.ok) throw new Error(data.message || data.error || fallbackMessage);
+    return data;
+  } catch (caught) {
+    if (caught instanceof DOMException && caught.name === "AbortError") {
+      throw new Error(`${fallbackMessage} Request timed out.`);
+    }
+    throw caught;
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 async function abortChunkUpload(uploadId: string) {
@@ -315,6 +343,26 @@ async function abortChunkUpload(uploadId: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ uploadId }),
   }).catch(() => undefined);
+}
+
+function parentPathFromUpload(currentFolder: string, relativePath: string) {
+  const parts = (relativePath || "").split("/").filter(Boolean);
+  parts.pop();
+  return [currentFolder, ...parts].filter(Boolean).join("/");
+}
+
+function baseNameFromUpload(relativePath: string, fallbackName: string) {
+  const parts = (relativePath || "").split("/").filter(Boolean);
+  return parts.at(-1) || fallbackName;
+}
+
+async function uploadedFileExists(currentFolder: string, relativePath: string, file: File) {
+  const parentPath = parentPathFromUpload(currentFolder, relativePath || file.name);
+  const expectedName = baseNameFromUpload(relativePath || file.name, file.name);
+  const res = await fetch(`/api/user/files/list?path=${encodeURIComponent(parentPath)}`, { cache: "no-store" });
+  const data = (await res.json().catch(() => ({}))) as DriveListResponse;
+  if (!res.ok || !data.ok) return false;
+  return Boolean(data.items?.some((item) => item.name === expectedName && item.bytes === file.size));
 }
 
 async function uploadChunkedFileWithProgress({
@@ -345,6 +393,7 @@ async function uploadChunkedFileWithProgress({
       speedBytesPerSecond,
       etaSeconds: speedBytesPerSecond > 0 ? remainingBytes / speedBytesPerSecond : null,
       message,
+      status: message.startsWith("Finalizing") ? "finalizing" : message.startsWith("Verifying") ? "verifying" : "uploading",
     });
   }
 
@@ -387,11 +436,21 @@ async function uploadChunkedFileWithProgress({
     }
 
     emitProgress(file.size, "Finalizing upload...");
-    const completed = await postUploadJson<UploadApiResponse>(
-      "/api/files/upload/complete",
-      { uploadId },
-      "Upload finalizing failed."
-    );
+    let completed: UploadApiResponse;
+    try {
+      completed = await postUploadJson<UploadApiResponse>(
+        "/api/files/upload/complete",
+        { uploadId },
+        "Upload finalizing failed."
+      );
+    } catch (caught) {
+      emitProgress(file.size, "Verifying uploaded file...");
+      if (await uploadedFileExists(currentFolder, relativePath || file.name, file)) {
+        return { ok: true, uploaded: [relativePath || file.name], recovered: true };
+      }
+      throw caught;
+    }
+
     onProgress({
       loadedBytes: file.size,
       totalBytes: file.size,
@@ -399,6 +458,7 @@ async function uploadChunkedFileWithProgress({
       speedBytesPerSecond: 0,
       etaSeconds: null,
       message: "Queued for preview after complete",
+      status: "uploaded",
     });
     return completed;
   } catch (caught) {
@@ -429,7 +489,7 @@ function calculateUploadTotals(selections: UploadSelection[]): UploadTotals {
   const totalBytes = selections.reduce((sum, item) => sum + item.totalBytes, 0);
   const uploadedBytes = selections.reduce((sum, item) => sum + Math.min(item.uploadedBytes, item.totalBytes), 0);
   const totalSpeedBytesPerSecond = selections
-    .filter((item) => item.status === "uploading")
+    .filter((item) => item.status === "uploading" || item.status === "finalizing" || item.status === "verifying")
     .reduce((sum, item) => sum + item.speedBytesPerSecond, 0);
   const remainingBytes = Math.max(totalBytes - uploadedBytes, 0);
 
@@ -437,7 +497,7 @@ function calculateUploadTotals(selections: UploadSelection[]): UploadTotals {
     totalFiles: selections.length,
     completedFiles: selections.filter((item) => item.status === "uploaded").length,
     failedFiles: selections.filter((item) => item.status === "failed").length,
-    activeFiles: selections.filter((item) => item.status === "uploading").length,
+    activeFiles: selections.filter((item) => item.status === "uploading" || item.status === "finalizing" || item.status === "verifying").length,
     totalBytes,
     uploadedBytes,
     totalPercent: totalBytes ? Math.round((uploadedBytes / totalBytes) * 100) : 0,
@@ -569,6 +629,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
                   uploadedBytes: progress.loadedBytes,
                   totalBytes: progress.totalBytes,
                   percent: progress.percent,
+                  status: progress.status || item.status,
                   speedBytesPerSecond: progress.speedBytesPerSecond,
                   etaSeconds: progress.etaSeconds,
                   progressMessage: progress.message,
@@ -593,7 +654,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
         item.status === "pending" || item.status === "failed"
           ? {
               ...item,
-              status: "queued",
+              status: "pending",
               uploadedBytes: 0,
               percent: 0,
               speedBytesPerSecond: 0,
@@ -1559,8 +1620,10 @@ function UploadModal({
   const totals = calculateUploadTotals(selections);
   const uploaded = totals.completedFiles;
   const failed = totals.failedFiles;
-  const pending = selections.filter((item) => item.status === "pending" || item.status === "queued").length;
-  const activeSelections = selections.filter((item) => item.status === "uploading");
+  const pending = selections.filter((item) => item.status === "pending").length;
+  const activeSelections = selections.filter(
+    (item) => item.status === "uploading" || item.status === "finalizing" || item.status === "verifying"
+  );
   const currentNames = activeSelections.map((item) =>
     item.progressMessage ? `${item.relativePath || item.name}: ${item.progressMessage}` : item.relativePath || item.name
   );
@@ -1581,9 +1644,9 @@ function UploadModal({
       : "Upload files";
   const percent = total ? (complete ? totals.totalPercent : Math.min(totals.totalPercent, 99)) : 0;
   const uploadableCount = selections.filter((item) => item.status === "pending" || item.status === "failed").length;
-  const retryOnly = failed > 0 && selections.every((item) => item.status !== "pending" && item.status !== "queued");
+  const retryOnly = failed > 0 && selections.every((item) => item.status !== "pending");
   const orderedSelections = [...selections].sort((a, b) => {
-    const order: Record<UploadStatus, number> = { uploading: 0, queued: 1, pending: 2, failed: 3, uploaded: 4 };
+    const order: Record<UploadStatus, number> = { uploading: 0, finalizing: 1, verifying: 2, pending: 3, failed: 4, uploaded: 5 };
     return order[a.status] - order[b.status];
   });
   const visibleSelections = orderedSelections.slice(0, 20);
@@ -1600,12 +1663,11 @@ function UploadModal({
     if (status === "uploaded") return "bg-[#d7ff3f]/10 text-[#d7ff3f]";
     if (status === "failed") return "bg-red-300/10 text-red-100";
     if (status === "uploading") return "bg-blue-300/10 text-blue-100";
-    if (status === "queued") return "bg-amber-300/10 text-amber-100";
+    if (status === "finalizing" || status === "verifying") return "bg-amber-300/10 text-amber-100";
     return "bg-white/10 text-zinc-400";
   }
 
   function statusLabel(item: UploadSelection) {
-    if (item.status === "uploading" && item.progressMessage?.startsWith("Finalizing")) return "finalizing";
     return item.status;
   }
 
@@ -1736,11 +1798,11 @@ function UploadModal({
                     <p className="truncate text-sm font-bold text-white">{item.relativePath || item.name}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
                       <span>{formatBytes(item.uploadedBytes)} / {formatBytes(item.totalBytes)}</span>
-                      {item.status === "uploading" ? <span>{Math.round(item.percent)}%</span> : null}
-                      {item.status === "uploading" ? <span>{formatSpeed(item.speedBytesPerSecond)}</span> : null}
+                      {item.status === "uploading" || item.status === "finalizing" || item.status === "verifying" ? <span>{Math.round(item.percent)}%</span> : null}
+                      {item.status === "uploading" || item.status === "finalizing" || item.status === "verifying" ? <span>{formatSpeed(item.speedBytesPerSecond)}</span> : null}
                     </div>
                     {item.progressMessage ? <p className="mt-1 text-xs text-zinc-400">{item.progressMessage}</p> : null}
-                    {item.status === "uploading" ? (
+                    {item.status === "uploading" || item.status === "finalizing" || item.status === "verifying" ? (
                       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
                         <div className="h-full rounded-full bg-blue-300 transition-all" style={{ width: `${Math.min(item.percent, 99)}%` }} />
                       </div>
