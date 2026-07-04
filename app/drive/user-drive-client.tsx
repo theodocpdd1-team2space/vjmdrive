@@ -53,6 +53,8 @@ type ShareResult = {
   failedEmails: string[];
 };
 
+type ShareVisibility = "PRIVATE" | "PUBLIC_LOGIN" | "PUBLIC";
+
 type UploadStatus = "pending" | "uploading" | "finalizing" | "verifying" | "uploaded" | "failed";
 
 type UploadSelection = {
@@ -2122,7 +2124,7 @@ function UserShareModal({
   const [title, setTitle] = useState("");
   const [shareType, setShareType] = useState<"standard" | "private" | "beauty">("standard");
   const [permission, setPermission] = useState<"VIEW_ONLY" | "DOWNLOAD">("DOWNLOAD");
-  const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE_EMAILS">("PUBLIC");
+  const [visibility, setVisibility] = useState<ShareVisibility>("PUBLIC_LOGIN");
   const [emails, setEmails] = useState<string[]>([]);
   const [expiry, setExpiry] = useState<"never" | "1d" | "7d" | "30d" | "custom">("never");
   const [customDate, setCustomDate] = useState("");
@@ -2139,7 +2141,7 @@ function UserShareModal({
     if (!item) return;
     setTitle("");
     setShareType("standard");
-    setVisibility("PUBLIC");
+    setVisibility("PUBLIC_LOGIN");
     setEmails([]);
     setNote("");
     setBeautyClientName(item.name);
@@ -2273,7 +2275,7 @@ function UserShareModal({
               <div className="mt-3 grid gap-2 text-xs text-zinc-300 sm:grid-cols-3">
                 <span>{result.permission}</span>
                 <span>{result.expiresAt ? new Date(result.expiresAt).toLocaleString("id-ID") : "Never expires"}</span>
-                <span>{result.permission === "BEAUTY_SHARE" ? "Public no login" : result.allowedEmails.length ? result.allowedEmails.join(", ") : "Public login"}</span>
+                <span>{result.permission === "BEAUTY_SHARE" ? "Public no login" : result.allowedEmails.length ? result.allowedEmails.join(", ") : "Login protected"}</span>
               </div>
               {result.failedEmails.length ? <p className="mt-3 text-xs font-semibold text-amber-300">Invite failed: {result.failedEmails.join(", ")}</p> : null}
             </div>
@@ -2291,11 +2293,11 @@ function UserShareModal({
         ) : (
           <div className="mt-5 space-y-4">
             <div className="grid gap-2 sm:grid-cols-3">
-              <button type="button" onClick={() => { setShareType("standard"); setVisibility("PUBLIC"); }} className={`rounded-2xl border p-3 text-left ${shareType === "standard" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
+              <button type="button" onClick={() => { setShareType("standard"); setVisibility("PUBLIC_LOGIN"); }} className={`rounded-2xl border p-3 text-left ${shareType === "standard" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
                 <p className="font-bold text-white">Standard Link</p>
                 <p className="mt-1 text-xs text-zinc-500">Login-protected public link.</p>
               </button>
-              <button type="button" onClick={() => { setShareType("private"); setVisibility("PRIVATE_EMAILS"); }} className={`rounded-2xl border p-3 text-left ${shareType === "private" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
+              <button type="button" onClick={() => { setShareType("private"); setVisibility("PUBLIC_LOGIN"); }} className={`rounded-2xl border p-3 text-left ${shareType === "private" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
                 <p className="font-bold text-white">Private Email</p>
                 <p className="mt-1 text-xs text-zinc-500">Only allowed emails.</p>
               </button>
@@ -2376,7 +2378,7 @@ function UserShareModal({
                   </button>
                 </div>
 
-                {visibility === "PRIVATE_EMAILS" ? <EmailChipsInput value={emails} onChange={setEmails} placeholder="client@example.com, team@example.com" disabled={submitting} /> : null}
+                {shareType === "private" ? <EmailChipsInput value={emails} onChange={setEmails} placeholder="client@example.com, team@example.com" disabled={submitting} /> : null}
 
                 <div>
                   <p className="text-sm text-zinc-300">Expiry</p>

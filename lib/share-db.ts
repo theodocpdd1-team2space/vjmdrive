@@ -6,7 +6,8 @@ import { normalizeDrivePath } from "./safe-path";
 import { normalizeEmail, type SessionUser } from "./auth";
 
 export type SharePermission = "VIEW_ONLY" | "DOWNLOAD" | "UPLOAD" | "FULL";
-export type ShareVisibility = "PUBLIC" | "PRIVATE_EMAILS";
+export type ShareVisibility = "PRIVATE" | "PUBLIC_LOGIN" | "PUBLIC";
+type LegacyShareVisibility = ShareVisibility | "PRIVATE_EMAILS";
 
 export type ShareLink = {
   id: string;
@@ -17,6 +18,7 @@ export type ShareLink = {
   ownerUserId: string | "admin";
   permission: SharePermission;
   visibility: ShareVisibility;
+  accessMode: ShareVisibility;
   allowedEmails: string[];
   invitedEmails: string[];
   expiresAt: string | null;
@@ -30,6 +32,14 @@ export type ShareLink = {
   createdAt: string;
   updatedAt: string;
   createdBy: "admin";
+};
+
+type RawShareLink = Partial<Omit<ShareLink, "visibility" | "accessMode">> & {
+  visibility?: LegacyShareVisibility;
+  accessMode?: LegacyShareVisibility;
+  accessModeVersion?: number;
+  publicAccess?: boolean;
+  canDownload?: boolean;
 };
 
 function dbPath() {
@@ -63,17 +73,35 @@ function normalizePermission(permission?: SharePermission, canDownload?: boolean
   return canDownload === false ? "VIEW_ONLY" : "DOWNLOAD";
 }
 
-function normalizeVisibility(visibility?: ShareVisibility): ShareVisibility {
-  if (visibility === "PRIVATE_EMAILS") return "PRIVATE_EMAILS";
-  return "PUBLIC";
+function normalizeVisibility(raw: Pick<RawShareLink, "visibility" | "accessMode" | "accessModeVersion" | "publicAccess">): ShareVisibility {
+  if (raw.accessMode === "PRIVATE") return "PRIVATE";
+  if (raw.accessMode === "PUBLIC_LOGIN" || raw.accessMode === "PRIVATE_EMAILS") return "PUBLIC_LOGIN";
+  if (raw.accessMode === "PUBLIC") return "PUBLIC";
+
+  if (raw.visibility === "PRIVATE") return "PRIVATE";
+  if (raw.visibility === "PUBLIC_LOGIN" || raw.visibility === "PRIVATE_EMAILS") return "PUBLIC_LOGIN";
+
+  if (raw.visibility === "PUBLIC") {
+    return raw.publicAccess === true || raw.accessModeVersion === 2 ? "PUBLIC" : "PUBLIC_LOGIN";
+  }
+
+  return "PUBLIC_LOGIN";
 }
 
-function normalizeShare(raw: Partial<ShareLink> & { canDownload?: boolean }): ShareLink {
+export function normalizeShareVisibility(value: unknown, fallback: ShareVisibility = "PUBLIC_LOGIN"): ShareVisibility {
+  if (value === "PRIVATE") return "PRIVATE";
+  if (value === "PUBLIC") return "PUBLIC";
+  if (value === "PUBLIC_LOGIN" || value === "PRIVATE_EMAILS") return "PUBLIC_LOGIN";
+  return fallback;
+}
+
+function normalizeShare(raw: RawShareLink): ShareLink {
   const now = new Date().toISOString();
 
   const permission = normalizePermission(raw.permission, raw.canDownload);
   const downloadEnabled = raw.downloadEnabled ?? raw.canDownload ?? permission !== "VIEW_ONLY";
   const title = raw.title || raw.name || "Shared Drive";
+  const visibility = normalizeVisibility(raw);
 
   return {
     id: raw.id || crypto.randomUUID(),
@@ -83,7 +111,8 @@ function normalizeShare(raw: Partial<ShareLink> & { canDownload?: boolean }): Sh
     rootPath: normalizeDrivePath(raw.rootPath || ""),
     ownerUserId: raw.ownerUserId || "admin",
     permission,
-    visibility: normalizeVisibility(raw.visibility),
+    visibility,
+    accessMode: visibility,
     allowedEmails: uniqueEmails(raw.allowedEmails || []),
     invitedEmails: uniqueEmails(raw.invitedEmails || []),
     expiresAt: raw.expiresAt || null,
@@ -107,7 +136,7 @@ export async function readShareLinks(): Promise<ShareLink[]> {
     .readFile(dbPath(), "utf8")
     .catch(() => fs.readFile(legacyDbPath(), "utf8").catch(() => "[]"));
 
-  const data = JSON.parse(raw) as Array<Partial<ShareLink>>;
+  const data = JSON.parse(raw) as RawShareLink[];
 
   return Array.isArray(data) ? data.map(normalizeShare) : [];
 }
@@ -136,7 +165,7 @@ export async function createShareLink(input: {
   const now = new Date().toISOString();
 
   const permission = normalizePermission(input.permission, input.canDownload);
-  const visibility = normalizeVisibility(input.visibility);
+  const visibility = normalizeShareVisibility(input.visibility);
   const rootPath = normalizeDrivePath(input.rootPath);
   const incomingEmails = uniqueEmails(input.allowedEmails || []);
   const title = (input.title || input.name || "Shared Drive").trim();
@@ -183,6 +212,7 @@ export async function createShareLink(input: {
       name: existing.name || existing.title || title,
       rootPath,
       visibility,
+      accessMode: visibility,
       permission,
       allowedEmails: mergedAllowedEmails,
       downloadEnabled,
@@ -210,6 +240,7 @@ export async function createShareLink(input: {
     ownerUserId: input.ownerUserId || "admin",
     permission,
     visibility,
+    accessMode: visibility,
     allowedEmails: incomingEmails,
     invitedEmails: [],
     expiresAt: input.expiresAt,
@@ -236,7 +267,7 @@ export async function createOrReuseShareLink(input: Parameters<typeof createShar
   const now = new Date().toISOString();
   const rootPath = normalizeDrivePath(input.rootPath);
   const permission = normalizePermission(input.permission, input.canDownload);
-  const visibility = normalizeVisibility(input.visibility);
+  const visibility = normalizeShareVisibility(input.visibility);
   const incomingEmails = uniqueEmails(input.allowedEmails || []);
   const existingIndex = links.findIndex((candidate) => {
     if (candidate.disabledAt) return false;
@@ -259,6 +290,8 @@ export async function createOrReuseShareLink(input: Parameters<typeof createShar
     ...existing,
     title,
     name: title,
+    visibility,
+    accessMode: visibility,
     note: input.note?.trim() || existing.note || "",
     expiresAt: input.expiresAt === undefined ? existing.expiresAt : input.expiresAt,
     allowedEmails,
@@ -279,9 +312,14 @@ export async function updateShareLink(token: string, patch: Partial<ShareLink>) 
 
   if (index === -1) return null;
 
+  const nextPatch = {
+    ...patch,
+    accessMode: patch.visibility ? patch.visibility : patch.accessMode,
+  };
+
   links[index] = normalizeShare({
     ...links[index],
-    ...patch,
+    ...nextPatch,
     updatedAt: new Date().toISOString(),
   });
 
@@ -301,23 +339,42 @@ export async function getValidShareLink(token: string) {
   return link;
 }
 
+function isAdminOrOwner(share: ShareLink, user: SessionUser | null) {
+  if (!user) return false;
+  return user.role === "ADMIN" || share.ownerUserId === user.id;
+}
+
 /**
- * Final driveOne share rule:
+ * driveOne share rule:
  *
  * PUBLIC:
- * - Still requires login.
- * - Any logged-in user can open the share.
+ * - Guest can open when no passwordHash is set.
+ * - allowedEmails is preserved but ignored for guest access.
  *
- * PRIVATE_EMAILS:
+ * PUBLIC_LOGIN:
  * - Requires login.
- * - Logged-in user's email must be in allowedEmails.
+ * - If allowedEmails exists, logged-in user's email must match.
+ * - If allowedEmails is empty, any logged-in user can open.
  *
- * Anonymous visitors must never access any share content.
+ * PRIVATE:
+ * - Only admin or share owner can open.
  */
 export function canUserAccessShare(share: ShareLink, user: SessionUser | null) {
-  if (!user?.email) return false;
+  if (isAdminOrOwner(share, user)) return true;
 
   if (share.visibility === "PUBLIC") {
+    return !share.passwordHash;
+  }
+
+  if (share.visibility === "PRIVATE") {
+    return false;
+  }
+
+  if (!user?.email) {
+    return false;
+  }
+
+  if (share.allowedEmails.length === 0) {
     return true;
   }
 
@@ -325,11 +382,23 @@ export function canUserAccessShare(share: ShareLink, user: SessionUser | null) {
 }
 
 export function getShareAccessReason(share: ShareLink, user: SessionUser | null) {
+  if (isAdminOrOwner(share, user)) {
+    return "ALLOWED";
+  }
+
+  if (share.visibility === "PUBLIC") {
+    return share.passwordHash ? "PASSWORD_REQUIRED" : "ALLOWED";
+  }
+
+  if (share.visibility === "PRIVATE") {
+    return "PRIVATE";
+  }
+
   if (!user?.email) {
     return "LOGIN_REQUIRED";
   }
 
-  if (share.visibility === "PUBLIC") {
+  if (share.allowedEmails.length === 0) {
     return "ALLOWED";
   }
 

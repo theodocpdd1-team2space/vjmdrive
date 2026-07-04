@@ -36,7 +36,7 @@ type ShareMeta = {
   canDownload: boolean;
   expiresAt: string | null;
   note?: string;
-  visibility?: "PUBLIC" | "PRIVATE_EMAILS";
+  visibility?: "PRIVATE" | "PUBLIC_LOGIN" | "PUBLIC";
 };
 
 type ShareApiError = {
@@ -356,7 +356,7 @@ export default function SharePage() {
                     {share.canDownload ? "View + Download" : "View only"}
                   </span>
                   <span className="rounded-lg border border-[#d7ff3f]/20 bg-[#d7ff3f]/10 px-2 py-1 text-[#d7ff3f]">
-                    Login protected
+                    {share.visibility === "PUBLIC" ? "Public" : share.visibility === "PRIVATE" ? "Private" : "Login protected"}
                   </span>
                 </div>
               </div>

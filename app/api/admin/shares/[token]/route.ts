@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAppUrl, getCurrentUser, isAdmin } from "@/lib/auth";
-import { readShareLinks, revokeShareLink, updateShareLink } from "@/lib/share-db";
+import { normalizeShareVisibility, readShareLinks, revokeShareLink, updateShareLink } from "@/lib/share-db";
 import { sendEmail } from "@/lib/email/resend";
 import { shareAccessTemplate } from "@/lib/email/templates";
 
@@ -23,7 +23,7 @@ function normalizeEmailList(value: unknown) {
 }
 
 function isValidVisibility(value: unknown) {
-  return value === "PUBLIC" || value === "PRIVATE_EMAILS";
+  return value === "PUBLIC" || value === "PUBLIC_LOGIN" || value === "PRIVATE" || value === "PRIVATE_EMAILS";
 }
 
 function isValidPermission(value: unknown) {
@@ -83,24 +83,27 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/admin/shares/[
     updatedAt: new Date().toISOString(),
   };
 
+  const hasExplicitVisibility = isValidVisibility(body?.visibility);
+
   if (allowedEmails) {
     patch.allowedEmails = allowedEmails;
 
-    if (allowedEmails.length > 0 && share.visibility !== "PRIVATE_EMAILS") {
-      patch.visibility = "PRIVATE_EMAILS";
-    }
-
-    if (allowedEmails.length === 0 && share.visibility === "PRIVATE_EMAILS" && body?.visibility !== "PRIVATE_EMAILS") {
-      patch.visibility = "PUBLIC";
+    if (allowedEmails.length > 0 && !hasExplicitVisibility && share.visibility === "PUBLIC") {
+      patch.visibility = "PUBLIC_LOGIN";
+      patch.accessMode = "PUBLIC_LOGIN";
     }
   }
 
-  if (isValidVisibility(body?.visibility)) {
-    patch.visibility = body.visibility;
+  if (hasExplicitVisibility) {
+    const visibility = normalizeShareVisibility(body.visibility);
+    patch.visibility = visibility;
+    patch.accessMode = visibility;
   }
 
   if (isValidPermission(body?.permission)) {
     patch.permission = body.permission;
+    patch.downloadEnabled = body.permission !== "VIEW_ONLY";
+    patch.canDownload = body.permission !== "VIEW_ONLY";
   }
 
   if (typeof body?.title === "string") {

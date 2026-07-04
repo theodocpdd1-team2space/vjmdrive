@@ -45,6 +45,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/share/[token
 
   try {
     const requestedPath = req.nextUrl.searchParams.get("path") || "";
+    const canManageShare = user?.role === "ADMIN" || user?.id === share.ownerUserId;
 
     const data = await listDriveFolder({
       path: requestedPath,
@@ -60,13 +61,13 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/share/[token
         token: share.token,
         name: share.name,
         title: share.title,
-        rootPath: share.rootPath,
+        rootPath: canManageShare ? share.rootPath : "",
         canDownload: share.downloadEnabled,
         downloadEnabled: share.downloadEnabled,
         previewEnabled: share.previewEnabled,
         permission: share.permission,
         visibility: share.visibility,
-        allowedEmails: share.allowedEmails,
+        allowedEmails: canManageShare ? share.allowedEmails : [],
         expiresAt: share.expiresAt,
         note: share.note || "",
       },

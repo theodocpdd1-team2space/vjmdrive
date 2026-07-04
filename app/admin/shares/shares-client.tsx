@@ -27,7 +27,7 @@ import {
 import { EmailChipsInput } from "@/components/common/email-chips-input";
 import type { ShareLink } from "@/lib/share-db";
 
-type FilterMode = "ALL" | "ACTIVE" | "EXPIRED" | "DISABLED" | "PINNED" | "PUBLIC" | "PRIVATE_EMAILS";
+type FilterMode = "ALL" | "ACTIVE" | "EXPIRED" | "DISABLED" | "PINNED" | "PUBLIC" | "PUBLIC_LOGIN" | "PRIVATE";
 type ShareTypeFilter = "ALL" | "STANDARD" | "BEAUTY";
 
 type AdminBeautyShare = {
@@ -89,6 +89,18 @@ function formatDate(value: string | null | undefined) {
   if (Number.isNaN(date.getTime())) return "-";
 
   return date.toLocaleString("id-ID");
+}
+
+function visibilityLabel(visibility: ShareLink["visibility"]) {
+  if (visibility === "PUBLIC") return "PUBLIC";
+  if (visibility === "PRIVATE") return "PRIVATE";
+  return "PUBLIC_LOGIN";
+}
+
+function visibilityDescription(visibility: ShareLink["visibility"]) {
+  if (visibility === "PUBLIC") return "Anyone with the link";
+  if (visibility === "PRIVATE") return "Admin/owner only";
+  return "Login protected";
 }
 
 export function AdminSharesClient({
@@ -247,7 +259,7 @@ export function AdminSharesClient({
       share.token,
       {
         allowedEmails: emails,
-        visibility: emails.length > 0 ? "PRIVATE_EMAILS" : "PUBLIC",
+        visibility: "PUBLIC_LOGIN",
       },
       "Allowed emails updated."
     );
@@ -262,7 +274,7 @@ export function AdminSharesClient({
     const expired = shares.filter((share) => getShareStatus(share, now) === "EXPIRED").length;
     const disabled = shares.filter((share) => getShareStatus(share, now) === "DISABLED").length;
     const pinned = shares.filter((share) => share.pinned).length;
-    const privateShares = shares.filter((share) => share.visibility === "PRIVATE_EMAILS").length;
+    const loginProtectedShares = shares.filter((share) => share.visibility === "PUBLIC_LOGIN").length;
 
     return {
       total: shares.length,
@@ -270,7 +282,7 @@ export function AdminSharesClient({
       expired,
       disabled,
       pinned,
-      privateShares,
+      loginProtectedShares,
     };
   }, [shares, now]);
 
@@ -307,7 +319,8 @@ export function AdminSharesClient({
       if (filter === "DISABLED") return status === "DISABLED";
       if (filter === "PINNED") return Boolean(share.pinned);
       if (filter === "PUBLIC") return share.visibility === "PUBLIC";
-      if (filter === "PRIVATE_EMAILS") return share.visibility === "PRIVATE_EMAILS";
+      if (filter === "PUBLIC_LOGIN") return share.visibility === "PUBLIC_LOGIN";
+      if (filter === "PRIVATE") return share.visibility === "PRIVATE";
 
       return true;
     });
@@ -330,7 +343,7 @@ export function AdminSharesClient({
       if (filter === "ACTIVE") return status === "ACTIVE";
       if (filter === "DISABLED") return status === "DISABLED";
       if (filter === "PUBLIC") return true;
-      if (filter === "PRIVATE_EMAILS" || filter === "PINNED" || filter === "EXPIRED") return false;
+      if (filter === "PUBLIC_LOGIN" || filter === "PRIVATE" || filter === "PINNED" || filter === "EXPIRED") return false;
       return true;
     });
   }, [beautyShares, filter, ownerEmail, ownerFilter, query, typeFilter]);
@@ -360,7 +373,7 @@ export function AdminSharesClient({
             </div>
 
             <p className="mt-3 max-w-2xl text-sm leading-relaxed text-zinc-500">
-              Manage pinned links, public login-protected shares, private email access, and invitation emails.
+              Manage pinned links, guest-public shares, login-protected shares, private links, and invitation emails.
             </p>
           </div>
 
@@ -376,7 +389,7 @@ export function AdminSharesClient({
           <div className="grid gap-3 md:grid-cols-6">
             <Metric icon={Link2} label="Total" value={String(metrics.total)} />
             <Metric icon={BadgeCheck} label="Active" value={String(metrics.active)} />
-            <Metric icon={Eye} label="Private" value={String(metrics.privateShares)} />
+            <Metric icon={Eye} label="Login protected" value={String(metrics.loginProtectedShares)} />
             <Metric icon={Pin} label="Pinned" value={String(metrics.pinned)} />
             <Metric icon={FileKey} label="Expired" value={String(metrics.expired)} />
             <Metric icon={Trash2} label="Disabled" value={String(metrics.disabled)} />
@@ -404,8 +417,9 @@ export function AdminSharesClient({
                   <option value="ALL">All shares</option>
                   <option value="ACTIVE">Active only</option>
                   <option value="PINNED">Pinned only</option>
-                  <option value="PUBLIC">Public only</option>
-                  <option value="PRIVATE_EMAILS">Private email only</option>
+                  <option value="PUBLIC">Public guest only</option>
+                  <option value="PUBLIC_LOGIN">Login protected only</option>
+                  <option value="PRIVATE">Private only</option>
                   <option value="EXPIRED">Expired only</option>
                   <option value="DISABLED">Disabled only</option>
                 </select>
@@ -468,7 +482,8 @@ export function AdminSharesClient({
                               </span>
                             ) : null}
                             <StatusBadge status={status} />
-                            <Pill>{share.visibility === "PUBLIC" ? "Public login" : "Private email"}</Pill>
+                            <Pill>{visibilityLabel(share.visibility)}</Pill>
+                            <Pill>{visibilityDescription(share.visibility)}</Pill>
                             <Pill>{share.permission}</Pill>
                           </div>
 
@@ -491,6 +506,36 @@ export function AdminSharesClient({
                             <Edit3 className="h-4 w-4" />
                             Edit Access
                           </button>
+
+                          {share.visibility !== "PUBLIC" ? (
+                            <button
+                              onClick={() =>
+                                void patchShare(
+                                  share.token,
+                                  { visibility: "PUBLIC" },
+                                  "Share changed to public. Anyone with the link can view."
+                                )
+                              }
+                              disabled={isUpdating || Boolean(share.disabledAt)}
+                              className="inline-flex items-center gap-2 rounded-2xl border border-[#d7ff3f]/30 px-3 py-2 text-sm font-bold text-[#d7ff3f] hover:bg-[#d7ff3f]/10 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              Make Public
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() =>
+                                void patchShare(
+                                  share.token,
+                                  { visibility: "PUBLIC_LOGIN" },
+                                  "Share changed to login protected."
+                                )
+                              }
+                              disabled={isUpdating || Boolean(share.disabledAt)}
+                              className="inline-flex items-center gap-2 rounded-2xl border border-white/10 px-3 py-2 text-sm font-bold text-zinc-300 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              Require Login
+                            </button>
+                          )}
 
                           <button
                             onClick={() => void patchShare(share.token, { pinned: !share.pinned }, share.pinned ? "Share unpinned." : "Share pinned.")}
@@ -545,22 +590,35 @@ export function AdminSharesClient({
                           </div>
 
                           <div className="flex flex-wrap gap-2">
-                            <button
-                              onClick={() =>
-                                void patchShare(
-                                  share.token,
-                                  {
-                                    visibility: "PUBLIC",
-                                    allowedEmails: [],
-                                  },
-                                  "Share changed to public login-protected."
-                                )
-                              }
-                              disabled={isUpdating}
-                              className="rounded-2xl border border-white/10 px-3 py-2 text-xs font-black text-zinc-300 hover:bg-white/10 disabled:opacity-50"
-                            >
-                              Make Public
-                            </button>
+                            {share.visibility !== "PUBLIC" ? (
+                              <button
+                                onClick={() =>
+                                  void patchShare(
+                                    share.token,
+                                    { visibility: "PUBLIC" },
+                                    "Share changed to public. Anyone with the link can view."
+                                  )
+                                }
+                                disabled={isUpdating}
+                                className="rounded-2xl border border-[#d7ff3f]/30 px-3 py-2 text-xs font-black text-[#d7ff3f] hover:bg-[#d7ff3f]/10 disabled:opacity-50"
+                              >
+                                Make Public
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() =>
+                                  void patchShare(
+                                    share.token,
+                                    { visibility: "PUBLIC_LOGIN" },
+                                    "Share changed to login protected."
+                                  )
+                                }
+                                disabled={isUpdating}
+                                className="rounded-2xl border border-white/10 px-3 py-2 text-xs font-black text-zinc-300 hover:bg-white/10 disabled:opacity-50"
+                              >
+                                Require Login
+                              </button>
+                            )}
 
                             <button
                               onClick={() => void saveEmails(share)}
@@ -627,8 +685,9 @@ export function AdminSharesClient({
                             }
                             className="mt-2 w-full rounded-2xl border border-white/10 bg-[#08090d] px-3 py-3 text-sm text-white outline-none disabled:opacity-50"
                           >
-                            <option value="PUBLIC">PUBLIC - login required</option>
-                            <option value="PRIVATE_EMAILS">PRIVATE_EMAILS</option>
+                            <option value="PUBLIC">PUBLIC - anyone with link</option>
+                            <option value="PUBLIC_LOGIN">PUBLIC_LOGIN - login required</option>
+                            <option value="PRIVATE">PRIVATE - admin/owner only</option>
                           </select>
                         </label>
 
@@ -775,7 +834,7 @@ function EditAccessModal({
   onSave: (share: ShareLink, patch: Record<string, unknown>, newEmails: string[]) => Promise<void>;
 }) {
   const [title, setTitle] = useState("");
-  const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE_EMAILS">("PUBLIC");
+  const [visibility, setVisibility] = useState<ShareLink["visibility"]>("PUBLIC_LOGIN");
   const [permission, setPermission] = useState<ShareLink["permission"]>("DOWNLOAD");
   const [emails, setEmails] = useState<string[]>([]);
   const [search, setSearch] = useState("");
@@ -846,8 +905,9 @@ function EditAccessModal({
             <label className="block text-sm font-semibold text-zinc-300">
               Visibility
               <select value={visibility} onChange={(event) => setVisibility(event.target.value as typeof visibility)} disabled={updating} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm text-white outline-none disabled:opacity-50">
-                <option value="PUBLIC">PUBLIC - login required</option>
-                <option value="PRIVATE_EMAILS">PRIVATE_EMAILS</option>
+                <option value="PUBLIC">PUBLIC - anyone with link</option>
+                <option value="PUBLIC_LOGIN">PUBLIC_LOGIN - login required</option>
+                <option value="PRIVATE">PRIVATE - admin/owner only</option>
               </select>
             </label>
             <label className="block text-sm font-semibold text-zinc-300">

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAppUrl, getCurrentUser, isAdmin } from "@/lib/auth";
-import { createOrReuseShareLink, updateShareLink, type SharePermission, type ShareVisibility } from "@/lib/share-db";
+import { createOrReuseShareLink, normalizeShareVisibility, updateShareLink, type SharePermission, type ShareVisibility } from "@/lib/share-db";
 import { sendEmail } from "@/lib/email/resend";
 import { shareAccessTemplate } from "@/lib/email/templates";
 import { resolveExisting } from "@/lib/file-ops";
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   const canDownload = body?.canDownload !== false;
   const expiresAt = typeof body?.expiresAt === "string" && body.expiresAt ? body.expiresAt : null;
   const note = typeof body?.note === "string" ? body.note : "";
-  const visibility: ShareVisibility = body?.visibility === "PRIVATE_EMAILS" ? "PRIVATE_EMAILS" : "PUBLIC";
+  const visibility: ShareVisibility = normalizeShareVisibility(body?.visibility, "PUBLIC_LOGIN");
   const permission: SharePermission =
     body?.permission === "VIEW_ONLY" || body?.permission === "UPLOAD" || body?.permission === "FULL" || body?.permission === "DOWNLOAD"
       ? body.permission
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     let inviteAttempted = false;
     const sent: string[] = [];
     const failed: string[] = [];
-    if (link.visibility === "PRIVATE_EMAILS" && newEmails.length) {
+    if (link.visibility === "PUBLIC_LOGIN" && newEmails.length) {
       inviteAttempted = true;
       const admin = await getCurrentUser();
       for (const email of newEmails) {

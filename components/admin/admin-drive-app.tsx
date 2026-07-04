@@ -97,7 +97,7 @@ type ShareLink = {
   title?: string;
   rootPath: string;
   canDownload: boolean;
-  visibility?: "PUBLIC" | "PRIVATE_EMAILS";
+  visibility?: "PRIVATE" | "PUBLIC_LOGIN" | "PUBLIC";
   allowedEmails?: string[];
   permission?: "VIEW_ONLY" | "DOWNLOAD" | "UPLOAD" | "FULL";
   expiresAt: string | null;
@@ -562,7 +562,7 @@ export default function AdminDriveApp({ embedded = false }: { embedded?: boolean
     canDownload: boolean;
     expiresAt: string | null;
     note: string;
-    visibility: "PUBLIC" | "PRIVATE_EMAILS";
+    visibility: "PRIVATE" | "PUBLIC_LOGIN" | "PUBLIC";
     allowedEmails: string[];
     permission: "VIEW_ONLY" | "DOWNLOAD";
   }) {
@@ -585,7 +585,7 @@ export default function AdminDriveApp({ embedded = false }: { embedded?: boolean
         expiresAt: input.expiresAt,
         allowedEmails: input.allowedEmails,
       });
-      if (input.visibility === "PRIVATE_EMAILS" && input.allowedEmails.length) {
+      if (input.visibility === "PUBLIC_LOGIN" && input.allowedEmails.length) {
         const failed = data.invite?.failed || [];
         setNotice(
           failed.length
@@ -606,7 +606,7 @@ export default function AdminDriveApp({ embedded = false }: { embedded?: boolean
   async function updateShareAllowedEmails(token: string, allowedEmails: string[]) {
     await adminJson(`/api/admin/shares/${token}`, "PATCH", {
       allowedEmails,
-      visibility: allowedEmails.length > 0 ? "PRIVATE_EMAILS" : "PUBLIC",
+      visibility: "PUBLIC_LOGIN",
     });
     await loadShares();
   }
@@ -1304,7 +1304,7 @@ function SharesView({
                     {share.canDownload ? "View + Download" : "View only"}
                   </span>
                   <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-zinc-300">
-                    {share.visibility === "PRIVATE_EMAILS" ? "Private emails" : "Public"}
+                    {share.visibility === "PUBLIC" ? "Public" : share.visibility === "PRIVATE" ? "Private" : "Login protected"}
                   </span>
                 </div>
                 <p className="mt-2 truncate text-xs text-zinc-500" title={share.rootPath || "PublicShare"}>{share.rootPath || "PublicShare"}</p>
@@ -1370,7 +1370,7 @@ function ShareModal({
     canDownload: boolean;
     expiresAt: string | null;
     note: string;
-    visibility: "PUBLIC" | "PRIVATE_EMAILS";
+    visibility: "PRIVATE" | "PUBLIC_LOGIN" | "PUBLIC";
     allowedEmails: string[];
     permission: "VIEW_ONLY" | "DOWNLOAD";
   }) => Promise<void>;
@@ -1379,7 +1379,7 @@ function ShareModal({
 }) {
   const [name, setName] = useState("Client Share");
   const [canDownload, setCanDownload] = useState(true);
-  const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE_EMAILS">("PUBLIC");
+  const [visibility, setVisibility] = useState<"PRIVATE" | "PUBLIC_LOGIN" | "PUBLIC">("PUBLIC_LOGIN");
   const [emails, setEmails] = useState<string[]>([]);
   const [expiry, setExpiry] = useState<"never" | "1d" | "7d" | "30d" | "custom">("never");
   const [customDate, setCustomDate] = useState("");
@@ -1398,7 +1398,7 @@ function ShareModal({
   const accessNeedle = accessSearch.trim().toLowerCase();
   const filteredAccess = existingAccess.flatMap((share) => {
     const allowedEmails = share.allowedEmails || [];
-    const emailsForShare = share.visibility === "PUBLIC" && !allowedEmails.length ? ["Public login-protected"] : allowedEmails;
+    const emailsForShare = share.visibility === "PUBLIC_LOGIN" && !allowedEmails.length ? ["Login protected"] : allowedEmails;
     return emailsForShare
       .filter((email) => !accessNeedle || [email, share.title, share.permission, share.visibility].join(" ").toLowerCase().includes(accessNeedle))
       .map((email) => ({ share, email }));
@@ -1479,7 +1479,7 @@ function ShareModal({
                       <p className="truncate text-sm font-semibold text-zinc-100">{email}</p>
                       <p className="mt-0.5 text-xs text-zinc-500">{share.title} · {share.visibility} · {share.permission} · {share.expiresAt ? formatDate(share.expiresAt) : "Never expires"}</p>
                     </div>
-                    {email !== "Public login-protected" ? (
+                    {email !== "Login protected" ? (
                       <button
                         type="button"
                         onClick={async () => {
@@ -1520,12 +1520,12 @@ function ShareModal({
                 <p className="text-sm font-medium text-white">Public link</p>
                 <p className="mt-1 text-xs text-zinc-500">Anyone with the link can open it.</p>
               </button>
-              <button type="button" disabled={submitting} onClick={() => setVisibility("PRIVATE_EMAILS")} className={`rounded-lg border p-3 text-left disabled:opacity-50 ${visibility === "PRIVATE_EMAILS" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
+              <button type="button" disabled={submitting} onClick={() => setVisibility("PUBLIC_LOGIN")} className={`rounded-lg border p-3 text-left disabled:opacity-50 ${visibility === "PUBLIC_LOGIN" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
                 <p className="text-sm font-medium text-white">Private emails</p>
                 <p className="mt-1 text-xs text-zinc-500">Login required, email must match whitelist.</p>
               </button>
             </div>
-            {visibility === "PRIVATE_EMAILS" ? (
+            {visibility === "PUBLIC_LOGIN" ? (
               <div className="mt-3">
                 <span className="text-sm text-zinc-300">Allowed emails</span>
                 <div className="mt-2">

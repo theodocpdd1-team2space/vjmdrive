@@ -9,7 +9,8 @@ Private asset drive untuk VJMRTIM. Next.js tetap menjadi UI, browser, preview, a
 - Client masuk lewat `/share/[token]`.
 - Client hanya bisa browse, preview, dan download sesuai share token.
 - Share permission bisa `View only` atau `View + Download`.
-- Share link MVP disimpan di `CACHE_ROOT/db/share-links.json`.
+- Share visibility bisa `PUBLIC`, `PUBLIC_LOGIN`, atau `PRIVATE`.
+- Share link MVP disimpan di `CACHE_ROOT/db/shares.json` dengan fallback baca legacy `CACHE_ROOT/db/share-links.json`.
 
 ## UI / UX
 
@@ -157,6 +158,7 @@ Share link format:
   "token": "48-byte-hex-token",
   "name": "Client A",
   "rootPath": "2 TB/1-50/16/Part01",
+  "visibility": "PUBLIC_LOGIN",
   "canDownload": true,
   "expiresAt": null,
   "note": "Optional client note",
@@ -175,6 +177,14 @@ Client breadcrumb dimulai dari shared root, bukan full `PublicShare`.
 
 Admin bisa membuat share link dari current folder, selected folder, atau selected file. File-root share didukung; client akan melihat satu item sebagai shared root.
 Share modal mendukung client name, View only / View + Download, expiry Never / 1 day / 7 days / 30 days / custom, note, Copy, dan Open.
+
+Visibility behavior:
+
+- `PUBLIC`: guest bisa membuka `/share/[token]` tanpa login. `allowedEmails` tetap disimpan tetapi tidak dipakai untuk guest access.
+- `PUBLIC_LOGIN`: harus login. Jika `allowedEmails` berisi email, hanya email tersebut yang bisa akses.
+- `PRIVATE`: tidak bisa dibuka publik; hanya admin atau owner share.
+
+Existing legacy share dengan visibility lama `PUBLIC` tanpa marker access baru dibaca sebagai `PUBLIC_LOGIN`, supaya link lama tidak tiba-tiba menjadi guest-public. Tombol `Make Public` di admin akan menyimpan mode baru `PUBLIC`.
 
 ## Direct Download Architecture
 

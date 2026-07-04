@@ -49,7 +49,8 @@ export default async function DashboardPage() {
 
   const sharedWithMe = shares.filter((share) => {
     if (!isActiveShare(share, now)) return false;
-    if (share.visibility !== "PRIVATE_EMAILS") return false;
+    if (share.visibility !== "PUBLIC_LOGIN") return false;
+    if (share.allowedEmails.length === 0) return true;
     return share.allowedEmails.map(normalizeEmail).includes(userEmail);
   });
 

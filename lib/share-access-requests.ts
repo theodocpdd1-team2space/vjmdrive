@@ -108,7 +108,7 @@ export async function approveShareAccessRequest(id: string) {
 
   const nextShare = await updateShareLink(share.token, {
     allowedEmails,
-    visibility: "PRIVATE_EMAILS",
+    visibility: "PUBLIC_LOGIN",
   });
 
   return { request, share: nextShare };

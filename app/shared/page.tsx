@@ -27,7 +27,8 @@ export default async function SharedWithMePage() {
   const sharedWithMe = shares.filter((share) => {
     if (share.disabledAt) return false;
     if (share.expiresAt && new Date(share.expiresAt).getTime() < now) return false;
-    if (share.visibility !== "PRIVATE_EMAILS") return false;
+    if (share.visibility !== "PUBLIC_LOGIN") return false;
+    if (share.allowedEmails.length === 0) return true;
 
     return share.allowedEmails.map(normalizeEmail).includes(userEmail);
   });

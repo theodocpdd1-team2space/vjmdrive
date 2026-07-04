@@ -3,7 +3,7 @@ import { findUserById, getAppUrl, getCurrentUser } from "@/lib/auth";
 import { shareAccessTemplate } from "@/lib/email/templates";
 import { sendEmail } from "@/lib/email/resend";
 import { resolveExisting } from "@/lib/file-ops";
-import { createOrReuseShareLink, updateShareLink, type SharePermission, type ShareVisibility } from "@/lib/share-db";
+import { createOrReuseShareLink, normalizeShareVisibility, updateShareLink, type SharePermission, type ShareVisibility } from "@/lib/share-db";
 import { resolveUserDrivePath } from "@/lib/user-files";
 
 export const runtime = "nodejs";
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
   const title = typeof body?.title === "string" && body.title.trim() ? body.title.trim() : "Shared file";
   const note = typeof body?.note === "string" ? body.note : "";
   const expiresAt = typeof body?.expiresAt === "string" && body.expiresAt ? body.expiresAt : null;
-  const visibility: ShareVisibility = body?.visibility === "PRIVATE_EMAILS" ? "PRIVATE_EMAILS" : "PUBLIC";
+  const visibility: ShareVisibility = normalizeShareVisibility(body?.visibility, "PUBLIC_LOGIN");
   const permission: SharePermission = body?.permission === "VIEW_ONLY" ? "VIEW_ONLY" : "DOWNLOAD";
   const allowedEmails = normalizeEmails(body?.allowedEmails);
 
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     const sent: string[] = [];
     const failed: string[] = [];
 
-    if (visibility === "PRIVATE_EMAILS") {
+    if (visibility === "PUBLIC_LOGIN") {
       for (const email of newEmails) {
         const template = shareAccessTemplate({
           sharedBy: user.email,
@@ -80,7 +80,7 @@ export async function POST(req: Request) {
       url: `/share/${link.token}`,
       link,
       reused,
-      invite: { sent, failed, attempted: visibility === "PRIVATE_EMAILS" && link.allowedEmails.length > 0 },
+      invite: { sent, failed, attempted: visibility === "PUBLIC_LOGIN" && link.allowedEmails.length > 0 },
     });
   } catch (caught) {
     return NextResponse.json(
