@@ -632,6 +632,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [shareTarget, setShareTarget] = useState<DriveItem | null>(null);
+  const [shareInitialType, setShareInitialType] = useState<"standard" | "client-select">("standard");
   const [shareResult, setShareResult] = useState<ShareResult | null>(null);
   const [deleteTargets, setDeleteTargets] = useState<DriveItem[]>([]);
   const [deleting, setDeleting] = useState(false);
@@ -1053,6 +1054,12 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
             onNewFolder={() => setFolderModalOpen(true)}
             onOpenUpload={() => setUploadModalOpen(true)}
             onShareCurrent={() => {
+              setShareInitialType("standard");
+              setShareTarget(currentFolderItem());
+              setShareResult(null);
+            }}
+            onClientSelectCurrent={() => {
+              setShareInitialType("client-select");
               setShareTarget(currentFolderItem());
               setShareResult(null);
             }}
@@ -1070,6 +1077,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
             setPreviewItem={setPreviewItem}
             toggleSelect={toggleSelect}
             setShareTarget={(item) => {
+              setShareInitialType("standard");
               setShareTarget(item);
               setShareResult(null);
             }}
@@ -1078,7 +1086,9 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
         </div>
 
         <UserShareModal
+          key={`${shareInitialType}:${shareTarget?.path || ""}`}
           item={shareTarget}
+          initialType={shareInitialType}
           result={shareResult}
           onClose={() => {
             setShareTarget(null);
@@ -1100,6 +1110,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
           onShare={(itemPath) => {
             const item = items.find((candidate) => candidate.path === itemPath) || null;
             setPreviewItem(null);
+            setShareInitialType("standard");
             setShareTarget(item);
             setShareResult(null);
           }}
@@ -1331,6 +1342,12 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
               onNewFolder={() => setFolderModalOpen(true)}
               onOpenUpload={() => setUploadModalOpen(true)}
               onShareCurrent={() => {
+                setShareInitialType("standard");
+                setShareTarget(currentFolderItem());
+                setShareResult(null);
+              }}
+              onClientSelectCurrent={() => {
+                setShareInitialType("client-select");
                 setShareTarget(currentFolderItem());
                 setShareResult(null);
               }}
@@ -1348,6 +1365,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
               setPreviewItem={setPreviewItem}
               toggleSelect={toggleSelect}
               setShareTarget={(item) => {
+                setShareInitialType("standard");
                 setShareTarget(item);
                 setShareResult(null);
               }}
@@ -1358,7 +1376,9 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
       </section>
 
       <UserShareModal
+        key={`${shareInitialType}:${shareTarget?.path || ""}`}
         item={shareTarget}
+        initialType={shareInitialType}
         result={shareResult}
         onClose={() => {
           setShareTarget(null);
@@ -1380,6 +1400,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
         onShare={(itemPath) => {
           const item = items.find((candidate) => candidate.path === itemPath) || null;
           setPreviewItem(null);
+          setShareInitialType("standard");
           setShareTarget(item);
           setShareResult(null);
         }}
@@ -1432,6 +1453,7 @@ function UserDriveToolbar({
   onNewFolder,
   onOpenUpload,
   onShareCurrent,
+  onClientSelectCurrent,
   onSelectAll,
   onClear,
   onDeleteSelected,
@@ -1444,6 +1466,7 @@ function UserDriveToolbar({
   onNewFolder: () => void;
   onOpenUpload: () => void;
   onShareCurrent: () => void;
+  onClientSelectCurrent: () => void;
   onSelectAll: () => void;
   onClear: () => void;
   onDeleteSelected: () => void;
@@ -1478,6 +1501,15 @@ function UserDriveToolbar({
           >
             <Share2 className="h-4 w-4" />
             Share current
+          </button>
+
+          <button
+            type="button"
+            onClick={onClientSelectCurrent}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-300 transition hover:bg-white/10 hover:text-white"
+          >
+            <CheckSquare className="h-4 w-4" />
+            Create Client Select
           </button>
         </div>
 
@@ -2111,19 +2143,21 @@ function NewFolderModal({
 
 function UserShareModal({
   item,
+  initialType,
   result,
   onClose,
   onCreated,
   onNotice,
 }: {
   item: DriveItem | null;
+  initialType: "standard" | "client-select";
   result: ShareResult | null;
   onClose: () => void;
   onCreated: (result: ShareResult) => void;
   onNotice: (message: string) => void;
 }) {
   const [title, setTitle] = useState("");
-  const [shareType, setShareType] = useState<"standard" | "private" | "beauty" | "client-select">("standard");
+  const [shareType, setShareType] = useState<"standard" | "private" | "beauty" | "client-select">(initialType);
   const [permission, setPermission] = useState<"VIEW_ONLY" | "DOWNLOAD">("DOWNLOAD");
   const [visibility, setVisibility] = useState<ShareVisibility>("PUBLIC_LOGIN");
   const [emails, setEmails] = useState<string[]>([]);
@@ -2148,7 +2182,6 @@ function UserShareModal({
   useEffect(() => {
     if (!item) return;
     setTitle("");
-    setShareType("standard");
     setVisibility("PUBLIC_LOGIN");
     setEmails([]);
     setNote("");
@@ -2348,6 +2381,12 @@ function UserShareModal({
                 <ExternalLink className="h-4 w-4" />
                 Open
               </a>
+              {result.permission === "CLIENT_SELECT" ? (
+                <a href="/client-select" className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm font-bold text-zinc-200 hover:bg-white/10">
+                  View in Client Select
+                  <ChevronRight className="h-4 w-4" />
+                </a>
+              ) : null}
             </div>
           </div>
         ) : (
@@ -2447,15 +2486,15 @@ function UserShareModal({
                   </label>
                 </div>
                 <label className="block">
-                  <span className="text-sm text-zinc-300">Max selected photos</span>
+                    <span className="text-sm text-zinc-300">Max photos client can choose</span>
                   <input type="number" min="0" value={selectMaxPhotos} onChange={(event) => setSelectMaxPhotos(event.target.value)} placeholder="Unlimited" className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none focus:border-[#d7ff3f]/50" />
                 </label>
                 <label className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
-                  <span className="text-sm font-semibold text-zinc-200">Allow original download</span>
+                  <span className="text-sm font-semibold text-zinc-200">Allow original downloads</span>
                   <input type="checkbox" checked={selectAllowDownload} onChange={(event) => setSelectAllowDownload(event.target.checked)} className="h-5 w-5 accent-[#d7ff3f]" />
                 </label>
                 <label className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
-                  <span className="text-sm font-semibold text-zinc-200">Allow edit after submit</span>
+                  <span className="text-sm font-semibold text-zinc-200">Allow client to edit after submit</span>
                   <input type="checkbox" checked={selectAllowEdit} onChange={(event) => setSelectAllowEdit(event.target.checked)} className="h-5 w-5 accent-[#d7ff3f]" />
                 </label>
                 <label className="block">
@@ -2465,7 +2504,7 @@ function UserShareModal({
                 {error ? <p className="rounded-2xl border border-red-300/20 bg-red-300/10 px-3 py-2 text-sm text-red-100">{error}</p> : null}
                 <button disabled={submitting || activeItem.type !== "folder"} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60">
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckSquare className="h-4 w-4" />}
-                  {submitting ? "Creating..." : "Create Client Select Link"}
+                  {submitting ? "Creating..." : "Create Selection Link"}
                 </button>
               </form>
             ) : (
