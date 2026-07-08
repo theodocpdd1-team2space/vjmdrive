@@ -48,3 +48,33 @@ export async function createZipResponse(absolutePath: string, fileName: string) 
 
   return new Response(stream, { headers });
 }
+
+export async function createSelectedFilesZipResponse({
+  files,
+  zipFileName,
+  manifestLines = [],
+}: {
+  files: Array<{ absolutePath: string; archiveName: string }>;
+  zipFileName: string;
+  manifestLines?: string[];
+}) {
+  const archive = new ZipArchive({ zlib: { level: 1 } });
+
+  for (const file of files) {
+    archive.append(fs.createReadStream(file.absolutePath), { name: file.archiveName });
+  }
+
+  if (manifestLines.length) {
+    archive.append(`${manifestLines.join("\n")}\n`, { name: "manifest.txt" });
+  }
+
+  const stream = Readable.toWeb(archive) as ReadableStream<Uint8Array>;
+  const headers = new Headers();
+  headers.set("Content-Type", "application/zip");
+  headers.set("Content-Disposition", contentDisposition(zipFileName.endsWith(".zip") ? zipFileName : `${zipFileName}.zip`, true));
+  headers.set("Cache-Control", "private, no-store");
+
+  void archive.finalize();
+
+  return new Response(stream, { headers });
+}

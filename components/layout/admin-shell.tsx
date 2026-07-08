@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   BarChart3,
+  CheckSquare,
   Folder,
   Link2,
   ListChecks,
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/admin/drive", label: "Drive", icon: Folder },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/shares", label: "Shares", icon: Link2 },
+  { href: "/admin/client-select", label: "Client Select", icon: CheckSquare },
   { href: "/admin/access-requests", label: "Access Requests", icon: Shield },
   { href: "/admin/preview-queue", label: "Preview Queue", icon: RefreshCw },
   { href: "/admin/settings", label: "Settings", icon: Settings },

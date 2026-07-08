@@ -615,6 +615,7 @@ function suggestSlug(value: string) {
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/drive", label: "My Drive", icon: HardDrive, active: true },
+  { href: "/client-select", label: "Client Select", icon: CheckSquare },
   { href: "/beauty", label: "Beauty Shares", icon: Sparkles },
   { href: "/shared", label: "Shared with Me", icon: Share2 },
   { href: "/account", label: "Account", icon: User },
@@ -2122,7 +2123,7 @@ function UserShareModal({
   onNotice: (message: string) => void;
 }) {
   const [title, setTitle] = useState("");
-  const [shareType, setShareType] = useState<"standard" | "private" | "beauty">("standard");
+  const [shareType, setShareType] = useState<"standard" | "private" | "beauty" | "client-select">("standard");
   const [permission, setPermission] = useState<"VIEW_ONLY" | "DOWNLOAD">("DOWNLOAD");
   const [visibility, setVisibility] = useState<ShareVisibility>("PUBLIC_LOGIN");
   const [emails, setEmails] = useState<string[]>([]);
@@ -2134,6 +2135,13 @@ function UserShareModal({
   const [beautySubtitle, setBeautySubtitle] = useState("Your files are ready.");
   const [beautyTheme, setBeautyTheme] = useState<"light" | "dark" | "cream">("light");
   const [beautyLayout, setBeautyLayout] = useState<"clean" | "collage" | "grid" | "magazine">("clean");
+  const [selectProjectName, setSelectProjectName] = useState("");
+  const [selectClientName, setSelectClientName] = useState("");
+  const [selectClientEmail, setSelectClientEmail] = useState("");
+  const [selectMaxPhotos, setSelectMaxPhotos] = useState("");
+  const [selectAllowDownload, setSelectAllowDownload] = useState(false);
+  const [selectAllowEdit, setSelectAllowEdit] = useState(false);
+  const [selectExpiresAt, setSelectExpiresAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -2149,6 +2157,13 @@ function UserShareModal({
     setBeautySubtitle("Your files are ready.");
     setBeautyTheme("light");
     setBeautyLayout("clean");
+    setSelectProjectName(item.name);
+    setSelectClientName("");
+    setSelectClientEmail("");
+    setSelectMaxPhotos("");
+    setSelectAllowDownload(false);
+    setSelectAllowEdit(false);
+    setSelectExpiresAt("");
     setError("");
   }, [item]);
 
@@ -2253,6 +2268,51 @@ function UserShareModal({
     onNotice("Beauty Share link created.");
   }
 
+  async function createClientSelectLink(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitting) return;
+    if (activeItem.type !== "folder") {
+      setError("Client Select is available for folders.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError("");
+
+    const projectName = selectProjectName.trim() || title.trim() || activeItem.name;
+    const res = await fetch("/api/client-select", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rootPath: activeItem.path,
+        projectName,
+        clientName: selectClientName,
+        clientEmail: selectClientEmail,
+        maxSelectedPhotos: selectMaxPhotos ? Number(selectMaxPhotos) : null,
+        allowOriginalDownload: selectAllowDownload,
+        allowEditAfterSubmit: selectAllowEdit,
+        expiresAt: selectExpiresAt ? new Date(selectExpiresAt).toISOString() : null,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setSubmitting(false);
+
+    if (!res.ok || !data.ok) {
+      setError(data.message || "Create Client Select failed.");
+      return;
+    }
+
+    onCreated({
+      url: `${window.location.origin}${data.publicUrl}`,
+      token: data.link?.token || "",
+      permission: "CLIENT_SELECT",
+      expiresAt: null,
+      allowedEmails: [],
+      failedEmails: [],
+    });
+    onNotice("Client Select link created.");
+  }
+
   return (
     <div className="fixed inset-0 z-[100] flex items-end bg-black/70 p-0 backdrop-blur-sm md:items-center md:justify-center md:p-4">
       <div className="max-h-[92vh] w-full overflow-auto rounded-t-3xl border border-white/10 bg-[#101217] p-4 shadow-2xl md:max-w-xl md:rounded-3xl">
@@ -2275,7 +2335,7 @@ function UserShareModal({
               <div className="mt-3 grid gap-2 text-xs text-zinc-300 sm:grid-cols-3">
                 <span>{result.permission}</span>
                 <span>{result.expiresAt ? new Date(result.expiresAt).toLocaleString("id-ID") : "Never expires"}</span>
-                <span>{result.permission === "BEAUTY_SHARE" ? "Public no login" : result.allowedEmails.length ? result.allowedEmails.join(", ") : "Login protected"}</span>
+                <span>{result.permission === "BEAUTY_SHARE" || result.permission === "CLIENT_SELECT" ? "Public no login" : result.allowedEmails.length ? result.allowedEmails.join(", ") : "Login protected"}</span>
               </div>
               {result.failedEmails.length ? <p className="mt-3 text-xs font-semibold text-amber-300">Invite failed: {result.failedEmails.join(", ")}</p> : null}
             </div>
@@ -2304,6 +2364,11 @@ function UserShareModal({
               <button type="button" onClick={() => { setShareType("beauty"); setError(""); }} className={`rounded-2xl border p-3 text-left ${shareType === "beauty" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
                 <Sparkles className="h-4 w-4 text-[#d7ff3f]" />
                 <p className="mt-2 font-bold text-white">Beauty Share</p>
+              </button>
+              <button type="button" onClick={() => { setShareType("client-select"); setError(""); }} className={`rounded-2xl border p-3 text-left sm:col-span-3 ${shareType === "client-select" ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`}>
+                <CheckSquare className="h-4 w-4 text-[#d7ff3f]" />
+                <p className="mt-2 font-bold text-white">Client Select</p>
+                <p className="mt-1 text-xs text-zinc-500">Public photo selection link.</p>
               </button>
             </div>
 
@@ -2358,6 +2423,49 @@ function UserShareModal({
                 <button disabled={submitting || activeItem.type !== "folder"} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60">
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                   {submitting ? "Creating..." : "Create Beauty Link"}
+                </button>
+              </form>
+            ) : shareType === "client-select" ? (
+              <form onSubmit={createClientSelectLink} className="space-y-4">
+                {activeItem.type !== "folder" ? (
+                  <p className="rounded-2xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">
+                    Client Select is available for folders.
+                  </p>
+                ) : null}
+                <label className="block">
+                  <span className="text-sm text-zinc-300">Project name</span>
+                  <input value={selectProjectName} onChange={(event) => setSelectProjectName(event.target.value)} placeholder={activeItem.name} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none focus:border-[#d7ff3f]/50" />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="text-sm text-zinc-300">Client name</span>
+                    <input value={selectClientName} onChange={(event) => setSelectClientName(event.target.value)} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none focus:border-[#d7ff3f]/50" />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm text-zinc-300">Client email</span>
+                    <input type="email" value={selectClientEmail} onChange={(event) => setSelectClientEmail(event.target.value)} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none focus:border-[#d7ff3f]/50" />
+                  </label>
+                </div>
+                <label className="block">
+                  <span className="text-sm text-zinc-300">Max selected photos</span>
+                  <input type="number" min="0" value={selectMaxPhotos} onChange={(event) => setSelectMaxPhotos(event.target.value)} placeholder="Unlimited" className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none focus:border-[#d7ff3f]/50" />
+                </label>
+                <label className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                  <span className="text-sm font-semibold text-zinc-200">Allow original download</span>
+                  <input type="checkbox" checked={selectAllowDownload} onChange={(event) => setSelectAllowDownload(event.target.checked)} className="h-5 w-5 accent-[#d7ff3f]" />
+                </label>
+                <label className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                  <span className="text-sm font-semibold text-zinc-200">Allow edit after submit</span>
+                  <input type="checkbox" checked={selectAllowEdit} onChange={(event) => setSelectAllowEdit(event.target.checked)} className="h-5 w-5 accent-[#d7ff3f]" />
+                </label>
+                <label className="block">
+                  <span className="text-sm text-zinc-300">Deadline</span>
+                  <input type="datetime-local" value={selectExpiresAt} onChange={(event) => setSelectExpiresAt(event.target.value)} className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none focus:border-[#d7ff3f]/50" />
+                </label>
+                {error ? <p className="rounded-2xl border border-red-300/20 bg-red-300/10 px-3 py-2 text-sm text-red-100">{error}</p> : null}
+                <button disabled={submitting || activeItem.type !== "folder"} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60">
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckSquare className="h-4 w-4" />}
+                  {submitting ? "Creating..." : "Create Client Select Link"}
                 </button>
               </form>
             ) : (

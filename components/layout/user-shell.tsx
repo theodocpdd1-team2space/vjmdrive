@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   HardDrive,
+  CheckSquare,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -22,6 +23,7 @@ import { logoutAndRedirect } from "@/components/common/logout";
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/drive", label: "My Drive", icon: HardDrive },
+  { href: "/client-select", label: "Client Select", icon: CheckSquare },
   { href: "/beauty", label: "Beauty Shares", icon: Sparkles },
   { href: "/shared", label: "Shared with Me", icon: Share2 },
   { href: "/account", label: "Account", icon: User },

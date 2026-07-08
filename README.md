@@ -238,6 +238,102 @@ Warning UX:
 Folder ZIP can be slow for huge folders. For very large assets, download files individually.
 ```
 
+## Client Select
+
+Client Select adalah modul terpisah dari Share Link dan Beauty Share. Metadata disimpan di:
+
+```txt
+CACHE_ROOT/db/selection-links.json
+CACHE_ROOT/db/selection-submissions.json
+```
+
+Create link:
+
+- Buka `/client-select`, isi project name, client info opsional, root folder path, max selected photos, dan allow original download.
+- Atau buka My Drive, pilih/current folder, klik Share, lalu pilih Client Select.
+- Public link memakai `/select/[token]` dan bisa dibuka tanpa login.
+
+Smoke test public link:
+
+- Buka link `/select/[token]` di incognito/private browser.
+- Pilih beberapa foto, isi global note, lalu submit.
+- Setelah submit, public page harus menampilkan “Selection submitted. Thank you.”
+- Bad token atau disabled link harus menampilkan unavailable.
+
+Export:
+
+- Owner/admin buka `/client-select` atau `/admin/client-select`.
+- Klik Detail pada link yang sudah submitted.
+- Export TXT berisi filename per baris.
+- Export CSV memakai columns `filename,path,note`; note per foto akan ikut di kolom `note`.
+- Export API hanya bisa diakses owner/admin.
+
+MVP 2 behavior:
+
+- Client wajib mengisi client name dan client email sebelum submit.
+- Client bisa menulis note per foto untuk foto yang dipilih.
+- Owner bisa set deadline (`expiresAt`). Public route dan public API akan unavailable setelah deadline, tetapi owner/admin detail tetap bisa dibuka.
+- `allowEditAfterSubmit=false` mengunci public form setelah submit.
+- `allowEditAfterSubmit=true` membuat client bisa update selection dan note sampai deadline; submission existing di-update, bukan dibuat duplikat.
+- Owner/admin bisa Download Selected ZIP dari detail Client Select.
+- Public selected ZIP tersedia di `/api/select/[token]/download-selected-zip` hanya jika `allowOriginalDownload=true`.
+- Owner/admin bisa Create Selected Folder; file terpilih dicopy ke folder `Selected by Client - [Project Name]` di dalam root folder Client Select. Original file tidak dipindah atau dihapus.
+- Subscription guard dasar saat create link baru: FREE 1 active link, LITE/PERSONAL 3 active links, BASIC/PRO/BUSINESS/CUSTOM/Admin unlimited. Existing links tidak diblokir.
+
+Email notification:
+
+- Saat client submit/update selection, sistem mencoba mengirim email ke owner.
+- Existing sender memakai Resend:
+
+```txt
+RESEND_API_KEY=
+RESEND_FROM="VJM Drive <no-reply@example.com>"
+ADMIN_EMAIL=
+APP_URL=https://drive.example.com
+```
+
+- Jika env email belum lengkap atau owner email tidak ditemukan, submit tetap sukses.
+- Hasil notifikasi disimpan di submission:
+
+```txt
+emailSentAt
+emailError
+```
+
+Selected ZIP:
+
+- ZIP hanya berisi selected files dan tidak menampilkan absolute server path.
+- Missing files akan diskip dan ditulis ke `manifest.txt` di dalam ZIP.
+- Nama ZIP: `[project-slug]-selected-files.zip`.
+- Jika filename konflik di ZIP, sistem memakai suffix `-copy-N`.
+
+Selected folder copy:
+
+- Endpoint owner/admin hanya melakukan copy, tidak move.
+- Hasil operation disimpan di Client Select link:
+
+```txt
+selectedFolderPath
+selectedFolderCopiedCount
+selectedFolderSkippedCount
+selectedFolderErrors
+selectedFolderCreatedAt
+```
+
+Backup metadata sebelum deploy atau perubahan besar:
+
+```bash
+mkdir -p .vjm-drive-cache/db/backups/before-client-select-$(date +%Y%m%d-%H%M%S)
+cp -a .vjm-drive-cache/db/*.json .vjm-drive-cache/db/backups/before-client-select-$(date +%Y%m%d-%H%M%S)/ 2>/dev/null || true
+```
+
+Deploy checklist:
+
+- Jangan reset database/cache.
+- Jangan rewrite `shares.json`, users metadata, preview queue/jobs, atau Beauty Share metadata.
+- Jalankan `npm run build`.
+- Test `/share/[token]`, `/b/[slug]`, `/client-select`, dan `/select/[token]` setelah deploy.
+
 ## Deploy VPS
 
 ```bash
