@@ -166,28 +166,29 @@ export function ViewToggle({
 export function FileThumbnail({
   item,
   size = "grid",
+  quietFallback = false,
 }: {
   item: DriveItem;
   size?: "grid" | "row" | "compact" | "modal";
+  quietFallback?: boolean;
 }) {
   const isSmall = size === "row" || size === "compact";
-  const [imageFailed, setImageFailed] = useState(false);
+  const [failedImageSrc, setFailedImageSrc] = useState("");
   const imageSrc =
     item.type === "image"
       ? item.thumbnailUrl || item.previewUrl || item.originalUrl
       : item.type === "video"
         ? item.thumbnailUrl
         : null;
-  const displayImageSrc = imageFailed ? null : imageSrc;
+  const displayImageSrc = imageSrc && failedImageSrc !== imageSrc ? imageSrc : null;
   const wrapperClass = isSmall
     ? "h-10 w-10"
     : size === "modal"
       ? "h-full min-h-72 w-full"
-      : "aspect-video w-full";
-
-  useEffect(() => {
-    setImageFailed(false);
-  }, [imageSrc]);
+      : quietFallback
+        ? "aspect-[4/3] w-full"
+        : "aspect-video w-full";
+  const extension = item.extension ? item.extension.toUpperCase() : typeLabel(item);
 
   return (
     <span
@@ -205,11 +206,19 @@ export function FileThumbnail({
           sizes={isSmall ? "40px" : "(max-width: 768px) 50vw, 260px"}
           unoptimized
           className="object-cover"
-          onError={() => setImageFailed(true)}
+          onError={() => setFailedImageSrc(imageSrc || "")}
         />
       ) : (
-        <span className="flex h-full w-full items-center justify-center">
-          <DriveIcon type={item.type} className={isSmall ? "h-5 w-5" : "h-9 w-9"} />
+        <span className="flex h-full w-full flex-col items-center justify-center">
+          <DriveIcon type={item.type} className={isSmall ? "h-5 w-5" : item.type === "folder" ? "h-10 w-10" : "h-8 w-8"} />
+          {quietFallback && !isSmall && item.type !== "folder" ? (
+            <>
+              <span className="mt-2 rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold text-zinc-300">
+                {extension}
+              </span>
+              <span className="mt-1.5 text-[10px] text-zinc-600">No preview</span>
+            </>
+          ) : null}
         </span>
       )}
       {item.type === "video" ? (
@@ -219,7 +228,7 @@ export function FileThumbnail({
           </span>
         </span>
       ) : null}
-      {item.previewStatus === "missing" || item.previewStatus === "failed" || item.previewStatus === "queued" ? (
+      {!quietFallback && (item.previewStatus === "missing" || item.previewStatus === "failed" || item.previewStatus === "queued") ? (
         <span className={`absolute left-2 top-2 rounded-md border px-1.5 py-0.5 text-[10px] ${previewBadgeClass(item.previewStatus)}`}>
           {previewStatusLabel(item)}
         </span>
@@ -308,6 +317,7 @@ export function PreviewModal({
   const [textPreview, setTextPreview] = useState("");
   const [previewError, setPreviewError] = useState("");
   const [videoError, setVideoError] = useState("");
+  const [failedImageSource, setFailedImageSource] = useState("");
 
   useEffect(() => {
     if (!open || !item) return;
@@ -383,7 +393,7 @@ export function PreviewModal({
         <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_320px]">
           <section className="flex min-h-0 items-center justify-center overflow-auto p-3 md:p-6">
             <div className="flex min-h-[50vh] w-full items-center justify-center">
-              {item.type === "image" ? (
+              {item.type === "image" && failedImageSource !== item.originalUrl ? (
                 <Image
                   src={item.originalUrl}
                   alt={item.name}
@@ -391,7 +401,18 @@ export function PreviewModal({
                   height={1200}
                   unoptimized
                   className="max-h-[calc(100vh-9rem)] w-auto max-w-full rounded-lg object-contain"
+                  onError={() => setFailedImageSource(item.originalUrl)}
                 />
+              ) : null}
+
+              {item.type === "image" && failedImageSource === item.originalUrl ? (
+                <div className="mx-auto flex max-w-sm flex-col items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] p-8 text-center">
+                  <FileImage className="h-12 w-12 text-zinc-500" />
+                  <span className="mt-3 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-xs font-semibold text-zinc-300">
+                    {(item.extension || "IMAGE").toUpperCase()}
+                  </span>
+                  <p className="mt-3 text-sm text-zinc-500">Preview is not available. The original file is still safe.</p>
+                </div>
               ) : null}
 
               {item.type === "video" ? (

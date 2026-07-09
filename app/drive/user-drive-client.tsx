@@ -21,6 +21,7 @@ import {
   Loader2,
   LogOut,
   Menu,
+  MoreHorizontal,
   Search,
   Share2,
   Sparkles,
@@ -35,8 +36,6 @@ import {
   FileThumbnail,
   formatBytes,
   PreviewModal,
-  PreviewStatusBadge,
-  SelectionCheckbox,
   type DriveItem,
   type ViewMode,
   ViewToggle,
@@ -982,7 +981,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
   if (embedded) {
     return (
       <>
-        <div className="mx-auto max-w-7xl space-y-5">
+        <div className="mx-auto max-w-7xl space-y-3 md:space-y-5">
           <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3 md:flex-row md:items-center md:justify-between">
             <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
               <Search className="h-4 w-4 shrink-0 text-zinc-500" />
@@ -995,18 +994,18 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
             </div>
           </div>
 
-          <section className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/20">
-              <p className="text-sm text-zinc-500">Current folder</p>
-              <p className="mt-2 truncate text-lg font-black text-white">{path || "Home"}</p>
+          <section className="grid grid-cols-3 gap-2 md:gap-3">
+            <div className="min-w-0 rounded-lg border border-white/10 bg-white/[0.04] p-3 md:p-4">
+              <p className="truncate text-[11px] text-zinc-500 md:text-sm">Current folder</p>
+              <p className="mt-1 truncate text-sm font-bold text-white md:text-base">{path || "Home"}</p>
             </div>
-            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/20">
-              <p className="text-sm text-zinc-500">Items shown</p>
-              <p className="mt-2 text-lg font-black text-white">{filteredItems.length}</p>
+            <div className="min-w-0 rounded-lg border border-white/10 bg-white/[0.04] p-3 md:p-4">
+              <p className="truncate text-[11px] text-zinc-500 md:text-sm">Items shown</p>
+              <p className="mt-1 text-sm font-bold text-white md:text-base">{filteredItems.length}</p>
             </div>
-            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/20">
-              <p className="text-sm text-zinc-500">Displayed size</p>
-              <p className="mt-2 text-lg font-black text-white">{formatBytes(usedBytesDisplayed)}</p>
+            <div className="min-w-0 rounded-lg border border-white/10 bg-white/[0.04] p-3 md:p-4">
+              <p className="truncate text-[11px] text-zinc-500 md:text-sm">Displayed size</p>
+              <p className="mt-1 truncate text-sm font-bold text-white md:text-base">{formatBytes(usedBytesDisplayed)}</p>
             </div>
           </section>
 
@@ -1078,6 +1077,11 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
             toggleSelect={toggleSelect}
             setShareTarget={(item) => {
               setShareInitialType("standard");
+              setShareTarget(item);
+              setShareResult(null);
+            }}
+            setClientSelectTarget={(item) => {
+              setShareInitialType("client-select");
               setShareTarget(item);
               setShareResult(null);
             }}
@@ -1274,21 +1278,21 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
         </header>
 
         <div className="p-4 md:p-6">
-          <div className="mx-auto max-w-7xl space-y-5">
-            <section className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/20">
-                <p className="text-sm text-zinc-500">Current folder</p>
-                <p className="mt-2 truncate text-lg font-black text-white">{path || "Home"}</p>
+          <div className="mx-auto max-w-7xl space-y-3 md:space-y-5">
+            <section className="grid grid-cols-3 gap-2 md:gap-3">
+              <div className="min-w-0 rounded-lg border border-white/10 bg-white/[0.04] p-3 md:p-4">
+                <p className="truncate text-[11px] text-zinc-500 md:text-sm">Current folder</p>
+                <p className="mt-1 truncate text-sm font-bold text-white md:text-base">{path || "Home"}</p>
               </div>
 
-              <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/20">
-                <p className="text-sm text-zinc-500">Items shown</p>
-                <p className="mt-2 text-lg font-black text-white">{filteredItems.length}</p>
+              <div className="min-w-0 rounded-lg border border-white/10 bg-white/[0.04] p-3 md:p-4">
+                <p className="truncate text-[11px] text-zinc-500 md:text-sm">Items shown</p>
+                <p className="mt-1 text-sm font-bold text-white md:text-base">{filteredItems.length}</p>
               </div>
 
-              <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/20">
-                <p className="text-sm text-zinc-500">Displayed size</p>
-                <p className="mt-2 text-lg font-black text-white">{formatBytes(usedBytesDisplayed)}</p>
+              <div className="min-w-0 rounded-lg border border-white/10 bg-white/[0.04] p-3 md:p-4">
+                <p className="truncate text-[11px] text-zinc-500 md:text-sm">Displayed size</p>
+                <p className="mt-1 truncate text-sm font-bold text-white md:text-base">{formatBytes(usedBytesDisplayed)}</p>
               </div>
             </section>
 
@@ -1366,6 +1370,11 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
               toggleSelect={toggleSelect}
               setShareTarget={(item) => {
                 setShareInitialType("standard");
+                setShareTarget(item);
+                setShareResult(null);
+              }}
+              setClientSelectTarget={(item) => {
+                setShareInitialType("client-select");
                 setShareTarget(item);
                 setShareResult(null);
               }}
@@ -1472,13 +1481,13 @@ function UserDriveToolbar({
   onDeleteSelected: () => void;
 }) {
   return (
-    <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-3 shadow-2xl shadow-black/10">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-wrap gap-2">
+    <section className="rounded-xl border border-white/10 bg-white/[0.025] p-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={onNewFolder}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d7ff3f] px-4 py-3 text-sm font-black text-black transition hover:bg-[#c8ef34]"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#d7ff3f] px-3 text-sm font-bold text-black transition hover:bg-[#c8ef34]"
           >
             <FolderPlus className="h-4 w-4" />
             New Folder
@@ -1488,7 +1497,7 @@ function UserDriveToolbar({
             type="button"
             onClick={onOpenUpload}
             disabled={uploading}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-300 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 px-3 text-sm font-semibold text-zinc-300 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Upload className="h-4 w-4" />
             Upload
@@ -1497,7 +1506,7 @@ function UserDriveToolbar({
           <button
             type="button"
             onClick={onShareCurrent}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-300 transition hover:bg-white/10 hover:text-white"
+            className="hidden h-9 items-center justify-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-semibold text-zinc-400 transition hover:bg-white/10 hover:text-white sm:inline-flex"
           >
             <Share2 className="h-4 w-4" />
             Share current
@@ -1506,43 +1515,80 @@ function UserDriveToolbar({
           <button
             type="button"
             onClick={onClientSelectCurrent}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-bold text-zinc-300 transition hover:bg-white/10 hover:text-white"
+            className="hidden h-9 items-center justify-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-semibold text-zinc-400 transition hover:bg-white/10 hover:text-white md:inline-flex"
           >
             <CheckSquare className="h-4 w-4" />
             Create Client Select
           </button>
+
+          <details className="relative md:hidden">
+            <summary
+              className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white [&::-webkit-details-marker]:hidden"
+              title="More folder actions"
+              aria-label="More folder actions"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </summary>
+            <div className="absolute left-0 top-11 z-40 w-52 overflow-hidden rounded-lg border border-white/10 bg-[#15171d] p-1 shadow-2xl">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.currentTarget.closest("details")?.removeAttribute("open");
+                  onShareCurrent();
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-zinc-300 hover:bg-white/10"
+              >
+                <Share2 className="h-4 w-4" />
+                Share current folder
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.currentTarget.closest("details")?.removeAttribute("open");
+                  onClientSelectCurrent();
+                }}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-zinc-300 hover:bg-white/10"
+              >
+                <CheckSquare className="h-4 w-4" />
+                Create Client Select
+              </button>
+            </div>
+          </details>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={onSelectAll}
             disabled={!visibleCount}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 px-3 py-2 text-sm font-bold text-zinc-300 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-zinc-400 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            title="Select all visible items"
           >
             <CheckSquare className="h-4 w-4" />
-            Select all
+            <span className="hidden sm:inline">Select all</span>
           </button>
           <button
             type="button"
             onClick={onClear}
             disabled={!selectedCount}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 px-3 py-2 text-sm font-bold text-zinc-300 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-zinc-400 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            title="Clear selection"
           >
             <Square className="h-4 w-4" />
-            Clear
+            <span className="hidden sm:inline">Clear</span>
           </button>
           {selectedCount ? (
             <button
               type="button"
               onClick={onDeleteSelected}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-300/25 bg-red-400/10 px-3 py-2 text-sm font-bold text-red-100 transition hover:bg-red-400/20"
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-red-200 transition hover:bg-red-400/10"
+              title="Delete selected items"
             >
               <Trash2 className="h-4 w-4" />
-              Delete selected
+              <span className="hidden sm:inline">Delete</span>
             </button>
           ) : null}
-          <span className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-bold text-zinc-500">
+          <span className="hidden rounded-md px-2 py-1 text-xs font-medium text-zinc-600 sm:inline">
             {selectedCount ? `${selectedCount} selected` : `${visibleCount} visible`}
           </span>
           <ViewToggle value={viewMode} onChange={setViewMode} />
@@ -1561,6 +1607,7 @@ function FileList({
   setPreviewItem,
   toggleSelect,
   setShareTarget,
+  setClientSelectTarget,
   setDeleteTarget,
 }: {
   loading: boolean;
@@ -1571,6 +1618,7 @@ function FileList({
   setPreviewItem: (item: DriveItem) => void;
   toggleSelect: (path: string) => void;
   setShareTarget: (item: DriveItem) => void;
+  setClientSelectTarget: (item: DriveItem) => void;
   setDeleteTarget: (item: DriveItem) => void;
 }) {
   function openItem(item: DriveItem) {
@@ -1578,24 +1626,26 @@ function FileList({
       void load(item.path);
       return;
     }
-    if (item.canPreview) setPreviewItem(item);
+    setPreviewItem(item);
   }
 
-  function handleItemKeyDown(event: KeyboardEvent<HTMLDivElement>, item: DriveItem) {
+  function handleItemKeyDown(event: KeyboardEvent<HTMLElement>, item: DriveItem) {
     const target = event.target as HTMLElement | null;
-    if (target?.closest("button,a,input")) return;
+    if (target?.closest("button,a,input,summary,details")) return;
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     openItem(item);
   }
 
+  function modifiedDate(value: string) {
+    return new Intl.DateTimeFormat("id-ID", { dateStyle: "medium" }).format(new Date(value));
+  }
+
   return (
-    <section className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/20">
-      <div className="border-b border-white/10 p-3">
-        <div>
-          <p className="text-sm font-black text-white">Files</p>
-          <p className="mt-1 text-xs text-zinc-500">Open, preview, download, or share your own files.</p>
-        </div>
+    <section className="rounded-xl border border-white/10 bg-white/[0.025]">
+      <div className="flex items-center justify-between border-b border-white/10 px-3 py-2.5">
+        <p className="text-sm font-semibold text-white">Files</p>
+        <span className="text-xs text-zinc-600">{filteredItems.length} items</span>
       </div>
       {loading ? (
         <div className="flex h-72 items-center justify-center gap-2 text-zinc-400">
@@ -1606,7 +1656,7 @@ function FileList({
 
       {!loading && filteredItems.length === 0 ? (
         <div className="flex h-72 flex-col items-center justify-center gap-3 p-8 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-3xl border border-white/10 bg-white/[0.04] text-[#d7ff3f]">
+          <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-[#d7ff3f]">
             <HardDrive className="h-7 w-7" />
           </div>
           <div>
@@ -1617,85 +1667,200 @@ function FileList({
       ) : null}
 
       {!loading && filteredItems.length > 0 ? (
-        <div className={viewMode === "grid" ? "grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3" : "divide-y divide-white/10"}>
-          {filteredItems.map((item) => (
-            <div
-              key={item.path}
-              role="button"
-              tabIndex={0}
-              title={item.type === "folder" ? `Open ${item.name}` : item.canPreview ? `Preview ${item.name}` : item.name}
-              aria-label={item.type === "folder" ? `Open folder ${item.name}` : item.canPreview ? `Preview file ${item.name}` : `File ${item.name}`}
-              onClick={() => openItem(item)}
-              onKeyDown={(event) => handleItemKeyDown(event, item)}
-              className={viewMode === "grid"
-                ? `cursor-pointer rounded-3xl border p-3 transition hover:bg-white/[0.05] focus:outline-none focus:ring-2 focus:ring-[#d7ff3f]/60 ${selectedPaths.has(item.path) ? "border-[#d7ff3f] bg-[#d7ff3f]/10" : "border-white/10 bg-black/20"}`
-                : `grid w-full cursor-pointer grid-cols-[42px_42px_minmax(0,1fr)] items-center gap-3 px-4 py-3 text-left transition hover:bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#d7ff3f]/60 md:grid-cols-[42px_42px_minmax(0,1fr)_120px_120px_220px] ${selectedPaths.has(item.path) ? "bg-[#d7ff3f]/10" : ""}`}
-            >
-              <SelectionCheckbox checked={selectedPaths.has(item.path)} onClick={() => toggleSelect(item.path)} />
-              <FileThumbnail item={item} size={viewMode === "grid" ? "grid" : "row"} />
+        <div className={viewMode === "grid" ? "grid grid-cols-2 gap-2.5 p-2.5 sm:grid-cols-3 xl:grid-cols-4" : "divide-y divide-white/[0.07]"}>
+          {filteredItems.map((item) => {
+            const selected = selectedPaths.has(item.path);
+            const downloadUrl = item.type === "folder"
+              ? `/api/user/files/zip?path=${encodeURIComponent(item.path)}`
+              : item.directDownloadUrl;
 
-              <div className="min-w-0">
-                <p className="truncate text-sm font-bold text-white">{item.name}</p>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-                  <span>{typeLabel(item)}</span>
-                  <PreviewStatusBadge item={item} />
-                </div>
-              </div>
-
-              <span className={viewMode === "grid" ? "mt-3 block text-xs text-zinc-500" : "hidden text-xs text-zinc-500 md:block"}>
-                {item.size || formatBytes(item.bytes || 0)}
-              </span>
-
-              <span className={viewMode === "grid" ? "mt-3 block text-xs text-zinc-600" : "hidden text-xs text-zinc-600 md:block"}>
-                {new Date(item.modified).toLocaleString("id-ID")}
-              </span>
-
-              <div className={viewMode === "grid" ? "mt-4 flex flex-wrap gap-2" : "col-span-2 flex flex-wrap gap-2 md:col-span-1 md:justify-end"}>
-                {item.type === "folder" ? (
-                  <a
-                    href={`/api/user/files/zip?path=${encodeURIComponent(item.path)}`}
-                    onClick={(event) => event.stopPropagation()}
-                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
-                  >
-                    <Download className="h-4 w-4" />
-                    Download
-                  </a>
-                ) : item.directDownloadUrl ? (
-                  <a
-                    href={item.directDownloadUrl}
-                    onClick={(event) => event.stopPropagation()}
-                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
-                  >
-                    <Download className="h-4 w-4" />
-                    Download
-                  </a>
-                ) : null}
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setShareTarget(item);
-                  }}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#d7ff3f] px-3 py-2 text-xs font-black text-black hover:bg-[#c8ef34]"
-                >
-                  <Share2 className="h-4 w-4" />
-                  Share
-                </button>
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setDeleteTarget(item);
-                  }}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-300/20 px-3 py-2 text-xs font-bold text-red-100 hover:bg-red-300/10"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
+            return (
+              <article
+                key={item.path}
+                role="button"
+                tabIndex={0}
+                title={item.type === "folder" ? `Open ${item.name}` : `Preview ${item.name}`}
+                aria-label={item.type === "folder" ? `Open folder ${item.name}` : `Preview file ${item.name}`}
+                onClick={() => openItem(item)}
+                onKeyDown={(event) => handleItemKeyDown(event, item)}
+                className={viewMode === "grid"
+                  ? `relative cursor-pointer rounded-lg border bg-black/20 transition focus:outline-none focus:ring-2 focus:ring-[#d7ff3f]/40 ${selected ? "border-[#d7ff3f]/80 bg-[#d7ff3f]/[0.04]" : "border-white/[0.08] hover:border-white/20 hover:bg-white/[0.035]"}`
+                  : `grid min-h-16 w-full cursor-pointer grid-cols-[34px_42px_minmax(0,1fr)_36px] items-center gap-2.5 px-2.5 py-2 text-left transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#d7ff3f]/40 sm:grid-cols-[34px_42px_minmax(0,1fr)_90px_110px_36px] ${selected ? "bg-[#d7ff3f]/[0.05]" : "hover:bg-white/[0.03]"}`}
+              >
+                {viewMode === "grid" ? (
+                  <>
+                    <div className="relative">
+                      <FileThumbnail item={item} size="grid" quietFallback />
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleSelect(item.path);
+                        }}
+                        className={`absolute left-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md border shadow-lg backdrop-blur transition ${selected ? "border-[#d7ff3f] bg-[#d7ff3f] text-black" : "border-white/25 bg-black/45 text-white/70 hover:border-white/60"}`}
+                        aria-label={selected ? `Deselect ${item.name}` : `Select ${item.name}`}
+                      >
+                        {selected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                      </button>
+                      <FileActionMenu
+                        item={item}
+                        downloadUrl={downloadUrl}
+                        onOpen={() => openItem(item)}
+                        onShare={() => setShareTarget(item)}
+                        onClientSelect={() => setClientSelectTarget(item)}
+                        onDelete={() => setDeleteTarget(item)}
+                        overlay
+                      />
+                    </div>
+                    <div className="p-2.5">
+                      <p className="line-clamp-2 min-h-9 break-words text-sm font-semibold leading-[1.15rem] text-white">{item.name}</p>
+                      <div className="mt-2 flex items-center gap-1.5 text-[11px] text-zinc-600">
+                        <span className="max-w-16 truncate uppercase">{item.extension || typeLabel(item)}</span>
+                        <span aria-hidden="true">·</span>
+                        <span className="truncate">{item.size || formatBytes(item.bytes || 0)}</span>
+                      </div>
+                      <p className="mt-1 truncate text-[11px] text-zinc-700">{modifiedDate(item.modified)}</p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleSelect(item.path);
+                      }}
+                      className={`flex h-8 w-8 items-center justify-center rounded-md transition ${selected ? "text-[#d7ff3f]" : "text-zinc-600 hover:bg-white/10 hover:text-zinc-300"}`}
+                      aria-label={selected ? `Deselect ${item.name}` : `Select ${item.name}`}
+                    >
+                      {selected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                    </button>
+                    <FileThumbnail item={item} size="row" quietFallback />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-white">{item.name}</p>
+                      <p className="mt-0.5 truncate text-[11px] text-zinc-600 sm:hidden">
+                        {(item.extension || typeLabel(item)).toUpperCase()} · {item.size || formatBytes(item.bytes || 0)} · {modifiedDate(item.modified)}
+                      </p>
+                      <p className="mt-0.5 hidden truncate text-[11px] text-zinc-600 sm:block">{typeLabel(item)}</p>
+                    </div>
+                    <span className="hidden truncate text-xs text-zinc-500 sm:block">{item.size || formatBytes(item.bytes || 0)}</span>
+                    <span className="hidden truncate text-xs text-zinc-600 sm:block">{modifiedDate(item.modified)}</span>
+                    <FileActionMenu
+                      item={item}
+                      downloadUrl={downloadUrl}
+                      onOpen={() => openItem(item)}
+                      onShare={() => setShareTarget(item)}
+                      onClientSelect={() => setClientSelectTarget(item)}
+                      onDelete={() => setDeleteTarget(item)}
+                    />
+                  </>
+                )}
+              </article>
+            );
+          })}
         </div>
       ) : null}
     </section>
+  );
+}
+
+function FileActionMenu({
+  item,
+  downloadUrl,
+  onOpen,
+  onShare,
+  onClientSelect,
+  onDelete,
+  overlay = false,
+}: {
+  item: DriveItem;
+  downloadUrl: string | null;
+  onOpen: () => void;
+  onShare: () => void;
+  onClientSelect: () => void;
+  onDelete: () => void;
+  overlay?: boolean;
+}) {
+  function close(details: Element | null) {
+    details?.removeAttribute("open");
+  }
+
+  return (
+    <details
+      className={overlay ? "absolute right-2 top-2 z-20" : "relative z-20"}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <summary
+        className={`flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-md border transition [&::-webkit-details-marker]:hidden ${
+          overlay
+            ? "border-white/20 bg-black/50 text-white/80 shadow-lg backdrop-blur hover:border-white/50 hover:text-white"
+            : "border-transparent text-zinc-500 hover:border-white/10 hover:bg-white/10 hover:text-white"
+        }`}
+        title={`More actions for ${item.name}`}
+        aria-label={`More actions for ${item.name}`}
+      >
+        <MoreHorizontal className="h-4 w-4" />
+      </summary>
+      <div className="absolute right-0 top-10 z-30 w-52 overflow-hidden rounded-lg border border-white/10 bg-[#15171d] p-1 shadow-2xl">
+        <button
+          type="button"
+          onClick={(event) => {
+            close(event.currentTarget.closest("details"));
+            onOpen();
+          }}
+          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-zinc-300 hover:bg-white/10 hover:text-white"
+        >
+          {item.type === "folder" ? <Folder className="h-4 w-4" /> : <File className="h-4 w-4" />}
+          {item.type === "folder" ? "Open" : "Preview"}
+        </button>
+        {downloadUrl ? (
+          <a
+            href={downloadUrl}
+            onClick={(event) => close(event.currentTarget.closest("details"))}
+            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-zinc-300 hover:bg-white/10 hover:text-white"
+          >
+            <Download className="h-4 w-4" />
+            Download
+          </a>
+        ) : null}
+        <button
+          type="button"
+          onClick={(event) => {
+            close(event.currentTarget.closest("details"));
+            onShare();
+          }}
+          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-zinc-300 hover:bg-white/10 hover:text-white"
+        >
+          <Share2 className="h-4 w-4" />
+          Share
+        </button>
+        {item.type === "folder" ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              close(event.currentTarget.closest("details"));
+              onClientSelect();
+            }}
+            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-zinc-300 hover:bg-white/10 hover:text-white"
+          >
+            <CheckSquare className="h-4 w-4" />
+            Create Client Select
+          </button>
+        ) : null}
+        <div className="my-1 border-t border-white/10" />
+        <button
+          type="button"
+          onClick={(event) => {
+            close(event.currentTarget.closest("details"));
+            onDelete();
+          }}
+          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-red-200 hover:bg-red-300/10"
+        >
+          <Trash2 className="h-4 w-4" />
+          Delete
+        </button>
+      </div>
+    </details>
   );
 }
 
