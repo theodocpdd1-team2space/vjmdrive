@@ -205,7 +205,7 @@ export default function SharePage() {
   const filtered = query.trim()
     ? items.filter((item) => item.name.toLowerCase().includes(query.toLowerCase().trim()))
     : items;
-  const displayedBytes = filtered.reduce((total, item) => total + (item.type === "folder" ? 0 : item.bytes), 0);
+  const displayedBytes = filtered.reduce((total, item) => total + item.bytes, 0);
 
   return (
     <main className="min-h-screen bg-[#08090d] text-zinc-100">

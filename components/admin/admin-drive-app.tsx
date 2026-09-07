@@ -668,7 +668,7 @@ export default function AdminDriveApp({ embedded = false }: { embedded?: boolean
     openShareModal(currentPath);
   }
 
-  const displayedBytes = filtered.reduce((total, item) => total + (item.type === "folder" ? 0 : item.bytes), 0);
+  const displayedBytes = filtered.reduce((total, item) => total + item.bytes, 0);
   const breadcrumbs = currentPath.split("/").filter(Boolean);
   const selectedVideoPreviewUrl =
     selected?.type === "video" && selected.previewStatus === "ready"

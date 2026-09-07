@@ -4,6 +4,7 @@ import { createDownloadLink } from "./download-url";
 import { formatBytes, getDriveItemType, getExtension } from "./file-utils";
 import { getPreviewMetadata } from "./preview-cache";
 import { readPreviewQueue } from "./preview-queue";
+import { directorySize } from "./storage";
 import {
   assertRealPathInsideRoot,
   isDriveSubPath,
@@ -149,15 +150,17 @@ export async function listDriveFolder(options: DriveListOptions) {
             ? scopedApiUrl(options.urlPrefix, "thumbnail", itemClientRelative)
             : rewriteUrl(previewMetadata.thumbnailUrl, options.urlPrefix);
 
+        const itemBytes = entry.isDirectory() ? await directorySize(itemAbs) : stat.size;
+
         return {
           name: entry.name,
           path: itemClientRelative,
           type,
           extension: entry.isDirectory() ? "" : getExtension(entry.name),
-          size: entry.isDirectory() ? null : formatBytes(stat.size),
-          bytes: entry.isDirectory() ? 0 : stat.size,
+          size: formatBytes(itemBytes),
+          bytes: itemBytes,
           modified: stat.mtime.toISOString(),
-          isLargeFile: !entry.isDirectory() && stat.size > LARGE_FILE_BYTES,
+          isLargeFile: !entry.isDirectory() && itemBytes > LARGE_FILE_BYTES,
           canPreview:
             previewStatus === "native" ||
             previewStatus === "ready",

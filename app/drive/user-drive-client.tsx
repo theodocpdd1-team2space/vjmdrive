@@ -964,7 +964,7 @@ export function UserDriveClient({ embedded = false }: { embedded?: boolean }) {
     [items, selectedPaths]
   );
 
-  const usedBytesDisplayed = filteredItems.reduce((total, item) => total + (item.type === "folder" ? 0 : item.bytes || 0), 0);
+  const usedBytesDisplayed = filteredItems.reduce((total, item) => total + (item.bytes || 0), 0);
   const drivePlanLabel = planSummary?.planLabel || "Drive plan";
   const drivePlanTitle = planSummary?.plan ? `${planSummary.plan} Plan` : "Drive Plan";
   const driveQuotaText =
