@@ -9,7 +9,8 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/b/[slug]/pre
   const response = await createBeautyPreviewResponse(
     slug,
     req.nextUrl.searchParams.get("path") || "",
-    req.headers.get("range")
+    req.headers.get("range"),
+    req.signal
   );
   return response || NextResponse.json({ ok: false, message: "Preview not found." }, { status: 404 });
 }

@@ -55,7 +55,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/share/[token
     );
   }
 
-  const response = await createShareFileResponse(token, filePath, req.headers.get("range"), download);
+  const response = await createShareFileResponse(token, filePath, req.headers.get("range"), download, req.signal);
 
   return (
     response ||

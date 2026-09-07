@@ -15,7 +15,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/select/[toke
 
   const filePath = req.nextUrl.searchParams.get("path") || "";
   try {
-    const response = await createClientSelectThumbnailResponse(token, filePath);
+    const response = await createClientSelectThumbnailResponse(token, filePath, req.signal);
     return response || NextResponse.json({ ok: false, code: "THUMBNAIL_NOT_FOUND", message: "Thumbnail not found." }, { status: 404 });
   } catch {
     return NextResponse.json({ ok: false, code: "THUMBNAIL_NOT_FOUND", message: "Thumbnail not found." }, { status: 404 });

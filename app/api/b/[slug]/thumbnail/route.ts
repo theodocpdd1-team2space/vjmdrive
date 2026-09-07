@@ -6,6 +6,6 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest, ctx: RouteContext<"/api/b/[slug]/thumbnail">) {
   const { slug } = await ctx.params;
-  const response = await createBeautyThumbnailResponse(slug, req.nextUrl.searchParams.get("path") || "");
+  const response = await createBeautyThumbnailResponse(slug, req.nextUrl.searchParams.get("path") || "", req.signal);
   return response || NextResponse.json({ ok: false, message: "Thumbnail not found." }, { status: 404 });
 }

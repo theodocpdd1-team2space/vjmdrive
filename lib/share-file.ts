@@ -22,7 +22,7 @@ export async function resolveSharePath(token: string, requestedPath: string) {
   return { share, safePath, fullPath };
 }
 
-export async function createShareFileResponse(token: string, requestedPath: string, range: string | null, download: boolean) {
+export async function createShareFileResponse(token: string, requestedPath: string, range: string | null, download: boolean, signal?: AbortSignal) {
   const resolved = await resolveSharePath(token, requestedPath);
   if (!resolved || (!resolved.share.downloadEnabled && download)) return null;
 
@@ -45,14 +45,28 @@ export async function createShareFileResponse(token: string, requestedPath: stri
   if (byteRange) {
     headers.set("Content-Range", `bytes ${byteRange.start}-${byteRange.end}/${fileStat.size}`);
     headers.set("Content-Length", String(byteRange.end - byteRange.start + 1));
-    return new Response(nodeStream(resolved.safePath.absolutePath, byteRange), { status: 206, headers });
+    return new Response(
+      nodeStream(resolved.safePath.absolutePath, byteRange, {
+        route: "/api/share/[token]/file",
+        identifier: requestedPath || path.basename(resolved.fullPath),
+        signal,
+      }),
+      { status: 206, headers }
+    );
   }
 
   headers.set("Content-Length", String(fileStat.size));
-  return new Response(nodeStream(resolved.safePath.absolutePath), { headers });
+  return new Response(
+    nodeStream(resolved.safePath.absolutePath, undefined, {
+      route: "/api/share/[token]/file",
+      identifier: requestedPath || path.basename(resolved.fullPath),
+      signal,
+    }),
+    { headers }
+  );
 }
 
-export async function createSharePreviewResponse(token: string, requestedPath: string, range: string | null) {
+export async function createSharePreviewResponse(token: string, requestedPath: string, range: string | null, signal?: AbortSignal) {
   const resolved = await resolveSharePath(token, requestedPath);
   if (!resolved) return null;
 
@@ -79,14 +93,28 @@ export async function createSharePreviewResponse(token: string, requestedPath: s
   if (byteRange) {
     headers.set("Content-Range", `bytes ${byteRange.start}-${byteRange.end}/${previewStat.size}`);
     headers.set("Content-Length", String(byteRange.end - byteRange.start + 1));
-    return new Response(nodeStream(previewPath, byteRange), { status: 206, headers });
+    return new Response(
+      nodeStream(previewPath, byteRange, {
+        route: "/api/share/[token]/preview",
+        identifier: requestedPath || path.basename(resolved.fullPath),
+        signal,
+      }),
+      { status: 206, headers }
+    );
   }
 
   headers.set("Content-Length", String(previewStat.size));
-  return new Response(nodeStream(previewPath), { headers });
+  return new Response(
+    nodeStream(previewPath, undefined, {
+      route: "/api/share/[token]/preview",
+      identifier: requestedPath || path.basename(resolved.fullPath),
+      signal,
+    }),
+    { headers }
+  );
 }
 
-export async function createShareThumbnailResponse(token: string, requestedPath: string) {
+export async function createShareThumbnailResponse(token: string, requestedPath: string, signal?: AbortSignal) {
   const resolved = await resolveSharePath(token, requestedPath);
   if (!resolved) return null;
 
@@ -104,5 +132,12 @@ export async function createShareThumbnailResponse(token: string, requestedPath:
   headers.set("Content-Disposition", contentDisposition(`${path.basename(requestedPath)}.thumbnail`, false));
   headers.set("Content-Length", String(thumbnailStat.size));
 
-  return new Response(nodeStream(thumbnailPath), { headers });
+  return new Response(
+    nodeStream(thumbnailPath, undefined, {
+      route: "/api/share/[token]/thumbnail",
+      identifier: requestedPath || path.basename(resolved.fullPath),
+      signal,
+    }),
+    { headers }
+  );
 }

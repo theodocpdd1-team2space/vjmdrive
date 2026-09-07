@@ -13,7 +13,8 @@ export async function GET(req: NextRequest) {
 
   const response = await createThumbnailResponseForPath(
     userStorageRelativePath(user),
-    req.nextUrl.searchParams.get("path") || ""
+    req.nextUrl.searchParams.get("path") || "",
+    req.signal
   );
   return response || NextResponse.json({ ok: false, message: "Thumbnail not found." }, { status: 404 });
 }

@@ -12,6 +12,6 @@ export async function GET(req: NextRequest) {
   if (!user || user.disabled) return NextResponse.json({ ok: false }, { status: 403 });
   const filePath = req.nextUrl.searchParams.get("path") || "";
   const download = req.nextUrl.searchParams.get("download") === "1";
-  const response = await createFileResponseForPath(userStorageRelativePath(user), filePath, req.headers.get("range"), download);
+  const response = await createFileResponseForPath(userStorageRelativePath(user), filePath, req.headers.get("range"), download, req.signal);
   return response || NextResponse.json({ ok: false }, { status: 404 });
 }

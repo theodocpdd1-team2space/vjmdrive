@@ -10,7 +10,8 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/b/[slug]/fil
     slug,
     req.nextUrl.searchParams.get("path") || "",
     req.headers.get("range"),
-    req.nextUrl.searchParams.get("download") === "1"
+    req.nextUrl.searchParams.get("download") === "1",
+    req.signal
   );
 
   return response || NextResponse.json({ ok: false, message: "File not found." }, { status: 404 });

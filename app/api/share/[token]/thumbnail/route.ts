@@ -53,7 +53,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/share/[token
   }
 
   const filePath = req.nextUrl.searchParams.get("path") || "";
-  const response = await createShareThumbnailResponse(token, filePath);
+  const response = await createShareThumbnailResponse(token, filePath, req.signal);
 
   return (
     response ||

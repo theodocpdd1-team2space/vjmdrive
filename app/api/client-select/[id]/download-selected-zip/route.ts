@@ -7,7 +7,7 @@ import { createSelectedFilesZipResponse } from "@/lib/zip-stream";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: Request, ctx: RouteContext<"/api/client-select/[id]/download-selected-zip">) {
+export async function GET(req: Request, ctx: RouteContext<"/api/client-select/[id]/download-selected-zip">) {
   const session = await getCurrentUser();
   if (!session) return NextResponse.json({ ok: false, message: "Login required." }, { status: 401 });
 
@@ -25,5 +25,9 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/client-select/[
     files,
     zipFileName: selectedZipFileName(link.projectName),
     manifestLines: warnings.length ? ["Some selected files were skipped:", ...warnings] : [],
+  }, {
+    route: "/api/client-select/[id]/download-selected-zip",
+    identifier: link.projectName,
+    signal: req.signal,
   });
 }

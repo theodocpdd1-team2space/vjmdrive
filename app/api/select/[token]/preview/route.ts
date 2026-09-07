@@ -15,7 +15,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/select/[toke
 
   const filePath = req.nextUrl.searchParams.get("path") || "";
   try {
-    const response = await createClientSelectPreviewResponse(token, filePath, req.headers.get("range"));
+    const response = await createClientSelectPreviewResponse(token, filePath, req.headers.get("range"), req.signal);
     return response || NextResponse.json({ ok: false, code: "PREVIEW_NOT_FOUND", message: "Preview not found." }, { status: 404 });
   } catch {
     return NextResponse.json({ ok: false, code: "PREVIEW_NOT_FOUND", message: "Preview not found." }, { status: 404 });

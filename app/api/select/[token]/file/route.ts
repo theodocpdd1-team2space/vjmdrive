@@ -20,7 +20,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/select/[toke
   }
 
   try {
-    const response = await createClientSelectFileResponse(token, filePath, req.headers.get("range"), download);
+    const response = await createClientSelectFileResponse(token, filePath, req.headers.get("range"), download, req.signal);
     return response || NextResponse.json({ ok: false, code: "FILE_NOT_FOUND", message: "File not found." }, { status: 404 });
   } catch {
     return NextResponse.json({ ok: false, code: "FILE_NOT_FOUND", message: "File not found." }, { status: 404 });

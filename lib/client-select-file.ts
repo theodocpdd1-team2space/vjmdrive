@@ -24,7 +24,8 @@ export async function createClientSelectFileResponse(
   token: string,
   requestedPath: string,
   range: string | null,
-  download: boolean
+  download: boolean,
+  signal?: AbortSignal
 ) {
   const resolved = await resolveClientSelectPath(token, requestedPath);
   if (!resolved || (download && !resolved.link.allowOriginalDownload)) return null;
@@ -48,14 +49,28 @@ export async function createClientSelectFileResponse(
   if (byteRange) {
     headers.set("Content-Range", `bytes ${byteRange.start}-${byteRange.end}/${fileStat.size}`);
     headers.set("Content-Length", String(byteRange.end - byteRange.start + 1));
-    return new Response(nodeStream(resolved.safePath.absolutePath, byteRange), { status: 206, headers });
+    return new Response(
+      nodeStream(resolved.safePath.absolutePath, byteRange, {
+        route: "/api/select/[token]/file",
+        identifier: resolved.requestedPath || path.basename(resolved.fullPath),
+        signal,
+      }),
+      { status: 206, headers }
+    );
   }
 
   headers.set("Content-Length", String(fileStat.size));
-  return new Response(nodeStream(resolved.safePath.absolutePath), { headers });
+  return new Response(
+    nodeStream(resolved.safePath.absolutePath, undefined, {
+      route: "/api/select/[token]/file",
+      identifier: resolved.requestedPath || path.basename(resolved.fullPath),
+      signal,
+    }),
+    { headers }
+  );
 }
 
-export async function createClientSelectPreviewResponse(token: string, requestedPath: string, range: string | null) {
+export async function createClientSelectPreviewResponse(token: string, requestedPath: string, range: string | null, signal?: AbortSignal) {
   const resolved = await resolveClientSelectPath(token, requestedPath);
   if (!resolved) return null;
 
@@ -82,14 +97,28 @@ export async function createClientSelectPreviewResponse(token: string, requested
   if (byteRange) {
     headers.set("Content-Range", `bytes ${byteRange.start}-${byteRange.end}/${previewStat.size}`);
     headers.set("Content-Length", String(byteRange.end - byteRange.start + 1));
-    return new Response(nodeStream(previewPath, byteRange), { status: 206, headers });
+    return new Response(
+      nodeStream(previewPath, byteRange, {
+        route: "/api/select/[token]/preview",
+        identifier: resolved.requestedPath || path.basename(resolved.fullPath),
+        signal,
+      }),
+      { status: 206, headers }
+    );
   }
 
   headers.set("Content-Length", String(previewStat.size));
-  return new Response(nodeStream(previewPath), { headers });
+  return new Response(
+    nodeStream(previewPath, undefined, {
+      route: "/api/select/[token]/preview",
+      identifier: resolved.requestedPath || path.basename(resolved.fullPath),
+      signal,
+    }),
+    { headers }
+  );
 }
 
-export async function createClientSelectThumbnailResponse(token: string, requestedPath: string) {
+export async function createClientSelectThumbnailResponse(token: string, requestedPath: string, signal?: AbortSignal) {
   const resolved = await resolveClientSelectPath(token, requestedPath);
   if (!resolved) return null;
 
@@ -107,5 +136,12 @@ export async function createClientSelectThumbnailResponse(token: string, request
   headers.set("Content-Disposition", contentDisposition(`${path.basename(requestedPath)}.thumbnail`, false));
   headers.set("Content-Length", String(thumbnailStat.size));
 
-  return new Response(nodeStream(thumbnailPath), { headers });
+  return new Response(
+    nodeStream(thumbnailPath, undefined, {
+      route: "/api/select/[token]/thumbnail",
+      identifier: resolved.requestedPath || path.basename(resolved.fullPath),
+      signal,
+    }),
+    { headers }
+  );
 }

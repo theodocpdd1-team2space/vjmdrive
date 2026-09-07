@@ -17,7 +17,13 @@ async function resolveScopedFile(scopeRootPath: string, requestedPath: string) {
   return { fullPath, safePath, fileStat };
 }
 
-export async function createFileResponseForPath(scopeRootPath: string, requestedPath: string, range: string | null, download: boolean) {
+export async function createFileResponseForPath(
+  scopeRootPath: string,
+  requestedPath: string,
+  range: string | null,
+  download: boolean,
+  signal?: AbortSignal
+) {
   const resolved = await resolveScopedFile(scopeRootPath, requestedPath);
   if (!resolved) return null;
 
@@ -36,13 +42,32 @@ export async function createFileResponseForPath(scopeRootPath: string, requested
   if (byteRange) {
     headers.set("Content-Range", `bytes ${byteRange.start}-${byteRange.end}/${resolved.fileStat.size}`);
     headers.set("Content-Length", String(byteRange.end - byteRange.start + 1));
-    return new Response(nodeStream(resolved.safePath.absolutePath, byteRange), { status: 206, headers });
+    return new Response(
+      nodeStream(resolved.safePath.absolutePath, byteRange, {
+        route: "/api/user/files/file",
+        identifier: requestedPath || path.basename(resolved.fullPath),
+        signal,
+      }),
+      { status: 206, headers }
+    );
   }
   headers.set("Content-Length", String(resolved.fileStat.size));
-  return new Response(nodeStream(resolved.safePath.absolutePath), { headers });
+  return new Response(
+    nodeStream(resolved.safePath.absolutePath, undefined, {
+      route: "/api/user/files/file",
+      identifier: requestedPath || path.basename(resolved.fullPath),
+      signal,
+    }),
+    { headers }
+  );
 }
 
-export async function createPreviewResponseForPath(scopeRootPath: string, requestedPath: string, range: string | null) {
+export async function createPreviewResponseForPath(
+  scopeRootPath: string,
+  requestedPath: string,
+  range: string | null,
+  signal?: AbortSignal
+) {
   const resolved = await resolveScopedFile(scopeRootPath, requestedPath);
   if (!resolved) return null;
 
@@ -69,14 +94,28 @@ export async function createPreviewResponseForPath(scopeRootPath: string, reques
   if (byteRange) {
     headers.set("Content-Range", `bytes ${byteRange.start}-${byteRange.end}/${previewStat.size}`);
     headers.set("Content-Length", String(byteRange.end - byteRange.start + 1));
-    return new Response(nodeStream(previewPath, byteRange), { status: 206, headers });
+    return new Response(
+      nodeStream(previewPath, byteRange, {
+        route: "/api/user/files/preview",
+        identifier: requestedPath || path.basename(resolved.fullPath),
+        signal,
+      }),
+      { status: 206, headers }
+    );
   }
 
   headers.set("Content-Length", String(previewStat.size));
-  return new Response(nodeStream(previewPath), { headers });
+  return new Response(
+    nodeStream(previewPath, undefined, {
+      route: "/api/user/files/preview",
+      identifier: requestedPath || path.basename(resolved.fullPath),
+      signal,
+    }),
+    { headers }
+  );
 }
 
-export async function createThumbnailResponseForPath(scopeRootPath: string, requestedPath: string) {
+export async function createThumbnailResponseForPath(scopeRootPath: string, requestedPath: string, signal?: AbortSignal) {
   const resolved = await resolveScopedFile(scopeRootPath, requestedPath);
   if (!resolved) return null;
 
@@ -94,5 +133,12 @@ export async function createThumbnailResponseForPath(scopeRootPath: string, requ
   headers.set("Content-Length", String(thumbnailStat.size));
   headers.set("X-Content-Type-Options", "nosniff");
 
-  return new Response(nodeStream(thumbnailPath), { headers });
+  return new Response(
+    nodeStream(thumbnailPath, undefined, {
+      route: "/api/user/files/thumbnail",
+      identifier: requestedPath || path.basename(resolved.fullPath),
+      signal,
+    }),
+    { headers }
+  );
 }

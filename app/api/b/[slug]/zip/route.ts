@@ -32,5 +32,9 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/b/[slug]/zip
 
   await incrementBeautyShareDownload(resolved.share.id).catch(() => undefined);
   const fileName = requestedPath ? path.basename(requestedPath) : safeZipName(resolved.share.title || resolved.share.clientName || "Beauty Share");
-  return createZipResponse(resolved.safePath.absolutePath, fileName);
+  return createZipResponse(resolved.safePath.absolutePath, fileName, {
+    route: "/api/b/[slug]/zip",
+    identifier: requestedPath || fileName,
+    signal: req.signal,
+  });
 }

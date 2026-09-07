@@ -1,9 +1,67 @@
 import fs from "fs";
+import { Readable } from "stream";
 
 export type ByteRange = {
   start: number;
   end: number;
 };
+
+export type StreamLogContext = {
+  route: string;
+  identifier?: string;
+  signal?: AbortSignal;
+};
+
+function safeIdentifier(identifier: string | undefined) {
+  const clean = (identifier || "unknown")
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter(Boolean)
+    .slice(-4)
+    .join("/");
+
+  return (clean || "root").replace(/[^\w .@()+\-[\]/]/g, "_").slice(0, 180);
+}
+
+function errorSummary(caught: unknown) {
+  const error = caught as { code?: unknown; name?: unknown; message?: unknown };
+  return {
+    code: typeof error.code === "string" ? error.code : undefined,
+    name: typeof error.name === "string" ? error.name : undefined,
+    message: typeof error.message === "string" ? error.message : String(caught),
+  };
+}
+
+export function isExpectedStreamShutdown(caught: unknown) {
+  const summary = errorSummary(caught);
+  return (
+    summary.code === "ABORT_ERR" ||
+    summary.code === "ERR_STREAM_PREMATURE_CLOSE" ||
+    summary.code === "ERR_INVALID_STATE" ||
+    summary.name === "AbortError" ||
+    summary.message.includes("Controller is already closed") ||
+    summary.message.includes("The operation was aborted")
+  );
+}
+
+export function logStreamTermination(
+  context: StreamLogContext,
+  event: "request aborted" | "source stream error" | "zip warning",
+  caught?: unknown
+) {
+  const details = {
+    route: context.route,
+    path: safeIdentifier(context.identifier),
+    ...(caught ? errorSummary(caught) : {}),
+  };
+
+  if (event === "source stream error" && caught && !isExpectedStreamShutdown(caught)) {
+    console.error(`[stream] ${event}`, details);
+    return;
+  }
+
+  console.warn(`[stream] ${event}`, details);
+}
 
 export function parseRange(range: string | null, size: number): ByteRange | null {
   if (!range) return null;
@@ -38,55 +96,40 @@ export function parseRange(range: string | null, size: number): ByteRange | null
   };
 }
 
-export function nodeStream(filePath: string, range?: ByteRange) {
+export function nodeStream(filePath: string, range?: ByteRange, context?: StreamLogContext) {
   const stream = fs.createReadStream(filePath, range);
+  const signal = context?.signal;
   let closed = false;
+  let aborted = false;
 
-  function isClosedControllerError(caught: unknown) {
-    return caught instanceof TypeError && caught.message.includes("Controller is already closed");
+  function cleanup() {
+    signal?.removeEventListener("abort", abort);
   }
 
-  function reportUnexpectedStreamError(caught: unknown) {
-    console.error("[http-file] stream controller error", caught);
+  function abort() {
+    if (closed) return;
+    aborted = true;
+    closed = true;
+    if (context) logStreamTermination(context, "request aborted");
+    cleanup();
+    stream.destroy();
   }
 
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      stream.on("data", (chunk) => {
-        if (closed) return;
-        try {
-          const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-          controller.enqueue(new Uint8Array(bytes));
-        } catch (caught) {
-          if (!isClosedControllerError(caught)) reportUnexpectedStreamError(caught);
-          closed = true;
-          stream.destroy();
-        }
-      });
-
-      stream.on("end", () => {
-        if (closed) return;
-        closed = true;
-        try {
-          controller.close();
-        } catch (caught) {
-          if (!isClosedControllerError(caught)) reportUnexpectedStreamError(caught);
-        }
-      });
-
-      stream.on("error", (error) => {
-        if (closed) return;
-        closed = true;
-        try {
-          controller.error(error);
-        } catch (caught) {
-          if (!isClosedControllerError(caught)) reportUnexpectedStreamError(caught);
-        }
-      });
-    },
-    cancel() {
-      closed = true;
-      stream.destroy();
-    },
+  stream.once("error", (error) => {
+    if (aborted || isExpectedStreamShutdown(error)) return;
+    if (context) logStreamTermination(context, "source stream error", error);
   });
+
+  stream.once("close", () => {
+    closed = true;
+    cleanup();
+  });
+
+  if (signal?.aborted) {
+    abort();
+  } else {
+    signal?.addEventListener("abort", abort, { once: true });
+  }
+
+  return Readable.toWeb(stream) as ReadableStream<Uint8Array>;
 }

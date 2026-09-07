@@ -18,5 +18,9 @@ export async function GET(req: NextRequest) {
   })().catch(() => null);
   if (!safePath) return NextResponse.json({ ok: false }, { status: 404 });
 
-  return createZipResponse(safePath.absolutePath, path.basename(safePath.relativePath || "PublicShare"));
+  return createZipResponse(safePath.absolutePath, path.basename(safePath.relativePath || "PublicShare"), {
+    route: "/api/zip",
+    identifier: safePath.relativePath || "PublicShare",
+    signal: req.signal,
+  });
 }

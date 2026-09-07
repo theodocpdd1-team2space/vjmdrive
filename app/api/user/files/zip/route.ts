@@ -29,5 +29,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, message: "Folder not found." }, { status: 404 });
   }
 
-  return createZipResponse(resolved.safePath.absolutePath, path.basename(requestedPath || "My Drive"));
+  return createZipResponse(resolved.safePath.absolutePath, path.basename(requestedPath || "My Drive"), {
+    route: "/api/user/files/zip",
+    identifier: requestedPath || "My Drive",
+    signal: req.signal,
+  });
 }

@@ -6,7 +6,7 @@ import { createSelectedFilesZipResponse } from "@/lib/zip-stream";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: Request, ctx: RouteContext<"/api/select/[token]/download-selected-zip">) {
+export async function GET(req: Request, ctx: RouteContext<"/api/select/[token]/download-selected-zip">) {
   const { token } = await ctx.params;
   const link = await getValidClientSelectLink(token);
   if (!link || link.status === "LOCKED") {
@@ -26,5 +26,9 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/select/[token]/
     files,
     zipFileName: selectedZipFileName(link.projectName),
     manifestLines: warnings.length ? ["Some selected files were skipped:", ...warnings] : [],
+  }, {
+    route: "/api/select/[token]/download-selected-zip",
+    identifier: link.projectName,
+    signal: req.signal,
   });
 }

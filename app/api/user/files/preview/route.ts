@@ -14,7 +14,8 @@ export async function GET(req: NextRequest) {
   const response = await createPreviewResponseForPath(
     userStorageRelativePath(user),
     req.nextUrl.searchParams.get("path") || "",
-    req.headers.get("range")
+    req.headers.get("range"),
+    req.signal
   );
   return response || NextResponse.json({ ok: false, message: "Preview not found." }, { status: 404 });
 }

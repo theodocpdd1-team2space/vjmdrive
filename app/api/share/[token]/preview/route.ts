@@ -53,7 +53,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/share/[token
   }
 
   const filePath = req.nextUrl.searchParams.get("path") || "";
-  const response = await createSharePreviewResponse(token, filePath, req.headers.get("range"));
+  const response = await createSharePreviewResponse(token, filePath, req.headers.get("range"), req.signal);
 
   return (
     response ||

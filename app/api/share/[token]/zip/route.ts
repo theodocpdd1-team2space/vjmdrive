@@ -83,6 +83,11 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/share/[token
 
   return createZipResponse(
     resolved.safePath.absolutePath,
-    path.basename(requestedPath || resolved.share.name)
+    path.basename(requestedPath || resolved.share.name),
+    {
+      route: "/api/share/[token]/zip",
+      identifier: requestedPath || resolved.share.name,
+      signal: req.signal,
+    }
   );
 }

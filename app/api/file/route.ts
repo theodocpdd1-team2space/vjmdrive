@@ -61,9 +61,23 @@ export async function GET(req: NextRequest) {
     headers.set("Content-Range", `bytes ${byteRange.start}-${byteRange.end}/${size}`);
     headers.set("Content-Length", String(chunkSize));
 
-    return new Response(nodeStream(safePath.absolutePath, byteRange), { status: 206, headers });
+    return new Response(
+      nodeStream(safePath.absolutePath, byteRange, {
+        route: "/api/file",
+        identifier: safePath.relativePath,
+        signal: req.signal,
+      }),
+      { status: 206, headers }
+    );
   }
 
   headers.set("Content-Length", String(size));
-  return new Response(nodeStream(safePath.absolutePath), { headers });
+  return new Response(
+    nodeStream(safePath.absolutePath, undefined, {
+      route: "/api/file",
+      identifier: safePath.relativePath,
+      signal: req.signal,
+    }),
+    { headers }
+  );
 }

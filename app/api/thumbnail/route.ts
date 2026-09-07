@@ -62,5 +62,12 @@ export async function GET(req: NextRequest) {
   headers.set("Content-Length", String(thumbnailStat.size));
   headers.set("X-Content-Type-Options", "nosniff");
 
-  return new Response(nodeStream(thumbnailPath), { headers });
+  return new Response(
+    nodeStream(thumbnailPath, undefined, {
+      route: "/api/thumbnail",
+      identifier: safePath.relativePath,
+      signal: req.signal,
+    }),
+    { headers }
+  );
 }
